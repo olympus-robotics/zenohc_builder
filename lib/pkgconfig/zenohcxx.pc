@@ -1,0 +1,7 @@
+prefix=/zenohc_builder
+
+Name: zenohcxx
+Description: C++ bindings for Zenoh
+URL: https://github.com/eclipse-zenoh/zenoh-cpp
+Version: 1.0.0
+Cflags: -I${prefix}/include

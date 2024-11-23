@@ -1,2 +1,3 @@
 # zenohc_builder
-Zenoh C binding release binaries
+
+This library is used to build and release zenoh-c and zenoh-cpp headers and libraries.
