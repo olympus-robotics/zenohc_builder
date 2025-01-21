@@ -23,18 +23,24 @@
 #include "enums.hxx"
 #include "id.hxx"
 #include "interop.hxx"
+#include "keyexpr.hxx"
 #include "liveliness.hxx"
 #include "publisher.hxx"
 #include "query_consolidation.hxx"
 #include "subscriber.hxx"
 #include "timestamp.hxx"
+#if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_UNSTABLE_API)
+#include "querier.hxx"
+#endif
 #if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_SHARED_MEMORY) && defined(Z_FEATURE_UNSTABLE_API)
 #include "shm/client_storage/client_storage.hxx"
 #endif
 
-#include <optional>
-
 namespace zenoh {
+namespace ext {
+class SessionExt;
+}
+
 /// A Zenoh session.
 class Session : public Owned<::z_owned_session_t> {
     Session(zenoh::detail::null_object_t) : Owned(nullptr){};
@@ -141,7 +147,7 @@ class Session : public Owned<::z_owned_session_t> {
     /// @param key_expr ``KeyExpr`` to declare.
     /// @param err if not null, the result code will be written to this location, otherwise ZException exception will be
     /// thrown in case of error.
-    /// @return Declared ``KeyExpr`` instance.
+    /// @return declared ``KeyExpr`` instance.
     KeyExpr declare_keyexpr(const KeyExpr& key_expr, ZResult* err = nullptr) const {
         KeyExpr k = interop::detail::null<KeyExpr>();
         __ZENOH_RESULT_CHECK(::z_declare_keyexpr(interop::as_loaned_c_ptr(*this), interop::as_owned_c_ptr(k),
@@ -159,12 +165,12 @@ class Session : public Owned<::z_owned_session_t> {
                              err, "Failed to undeclare key expression");
     }
 #if defined(ZENOHCXX_ZENOHC) || Z_FEATURE_QUERY == 1
-    /// @brief Options passed to the ``get`` operation.
+    /// @brief Options passed to the ``Session::get`` operation.
     struct GetOptions {
         /// @name Fields
 
         /// @brief The Queryables that should be target of the query.
-        QueryTarget target = QueryTarget::Z_QUERY_TARGET_ALL;
+        QueryTarget target = QueryTarget::Z_QUERY_TARGET_BEST_MATCHING;
         /// @brief The replies consolidation strategy to apply on replies to the query.
         QueryConsolidation consolidation = QueryConsolidation();
         /// @brief The priority of the get message.
@@ -182,13 +188,28 @@ class Session : public Owned<::z_owned_session_t> {
         /// release.
         /// @brief The source info for the query.
         std::optional<SourceInfo> source_info = {};
+
+        /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
+        /// release.
+        ///
+        /// @brief The accepted replies for the query.
+        /// @note Zenoh-c only.
+        ReplyKeyExpr accept_replies = ::zc_reply_keyexpr_default();
+
+        /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
+        /// release.
+        /// @brief Allowed destination.
+        /// @note Zenoh-c only.
+        Locality allowed_destination = ::zc_locality_default();
 #endif
+
         /// @brief An optional attachment to the query.
         std::optional<Bytes> attachment = {};
         /// @brief The timeout for the query in milliseconds. 0 means default query timeout from zenoh configuration.
         uint64_t timeout_ms = 0;
 
         /// @name Methods
+
         /// @brief Create default option settings.
         static GetOptions create_default() { return {}; }
     };
@@ -204,14 +225,14 @@ class Session : public Owned<::z_owned_session_t> {
     template <class C, class D>
     void get(const KeyExpr& key_expr, const std::string& parameters, C&& on_reply, D&& on_drop,
              GetOptions&& options = GetOptions::create_default(), ZResult* err = nullptr) const {
-        static_assert(std::is_invocable_r<void, C, const Reply&>::value,
+        static_assert(std::is_invocable_r<void, C, Reply&>::value,
                       "on_reply should be callable with the following signature: void on_reply(zenoh::Reply& reply)");
         static_assert(std::is_invocable_r<void, D>::value,
                       "on_drop should be callable with the following signature: void on_drop()");
         ::z_owned_closure_reply_t c_closure;
         using Cval = std::remove_reference_t<C>;
         using Dval = std::remove_reference_t<D>;
-        using ClosureType = typename detail::closures::Closure<Cval, Dval, void, const Reply&>;
+        using ClosureType = typename detail::closures::Closure<Cval, Dval, void, Reply&>;
         auto closure = ClosureType::into_context(std::forward<C>(on_reply), std::forward<D>(on_drop));
         ::z_closure(&c_closure, detail::closures::_zenoh_on_reply_call, detail::closures::_zenoh_on_drop, closure);
         ::z_get_options_t opts;
@@ -225,6 +246,8 @@ class Session : public Owned<::z_owned_session_t> {
         opts.encoding = interop::as_moved_c_ptr(options.encoding);
 #if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_UNSTABLE_API)
         opts.source_info = interop::as_moved_c_ptr(options.source_info);
+        opts.accept_replies = options.accept_replies;
+        opts.allowed_destination = options.allowed_destination;
 #endif
         opts.attachment = interop::as_moved_c_ptr(options.attachment);
         opts.timeout_ms = options.timeout_ms;
@@ -254,10 +277,15 @@ class Session : public Owned<::z_owned_session_t> {
         z_get_options_default(&opts);
         opts.target = options.target;
         opts.consolidation = *interop::as_copyable_c_ptr(options.consolidation);
+        opts.congestion_control = options.congestion_control;
+        opts.priority = options.priority;
+        opts.is_express = options.is_express;
         opts.payload = interop::as_moved_c_ptr(options.payload);
         opts.encoding = interop::as_moved_c_ptr(options.encoding);
 #if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_UNSTABLE_API)
         opts.source_info = interop::as_moved_c_ptr(options.source_info);
+        opts.accept_replies = options.accept_replies;
+        opts.allowed_destination = options.allowed_destination;
 #endif
         opts.attachment = interop::as_moved_c_ptr(options.attachment);
         opts.timeout_ms = options.timeout_ms;
@@ -278,6 +306,7 @@ class Session : public Owned<::z_owned_session_t> {
         bool complete = false;
 
         /// @name Methods
+
         /// @brief Create default option settings.
         static QueryableOptions create_default() { return {}; }
     };
@@ -294,14 +323,14 @@ class Session : public Owned<::z_owned_session_t> {
     [[nodiscard]] Queryable<void> declare_queryable(const KeyExpr& key_expr, C&& on_query, D&& on_drop,
                                                     QueryableOptions&& options = QueryableOptions::create_default(),
                                                     ZResult* err = nullptr) const {
-        static_assert(std::is_invocable_r<void, C, const Query&>::value,
+        static_assert(std::is_invocable_r<void, C, Query&>::value,
                       "on_query should be callable with the following signature: void on_query(zenoh::Query& query)");
         static_assert(std::is_invocable_r<void, D>::value,
                       "on_drop should be callable with the following signature: void on_drop()");
         ::z_owned_closure_query_t c_closure;
         using Cval = std::remove_reference_t<C>;
         using Dval = std::remove_reference_t<D>;
-        using ClosureType = typename detail::closures::Closure<Cval, Dval, void, const Query&>;
+        using ClosureType = typename detail::closures::Closure<Cval, Dval, void, Query&>;
         auto closure = ClosureType::into_context(std::forward<C>(on_query), std::forward<D>(on_drop));
         ::z_closure(&c_closure, detail::closures::_zenoh_on_query_call, detail::closures::_zenoh_on_drop, closure);
         ::z_queryable_options_t opts;
@@ -327,14 +356,14 @@ class Session : public Owned<::z_owned_session_t> {
     void declare_background_queryable(const KeyExpr& key_expr, C&& on_query, D&& on_drop,
                                       QueryableOptions&& options = QueryableOptions::create_default(),
                                       ZResult* err = nullptr) const {
-        static_assert(std::is_invocable_r<void, C, const Query&>::value,
+        static_assert(std::is_invocable_r<void, C, Query&>::value,
                       "on_query should be callable with the following signature: void on_query(zenoh::Query& query)");
         static_assert(std::is_invocable_r<void, D>::value,
                       "on_drop should be callable with the following signature: void on_drop()");
         ::z_owned_closure_query_t c_closure;
         using Cval = std::remove_reference_t<C>;
         using Dval = std::remove_reference_t<D>;
-        using ClosureType = typename detail::closures::Closure<Cval, Dval, void, const Query&>;
+        using ClosureType = typename detail::closures::Closure<Cval, Dval, void, Query&>;
         auto closure = ClosureType::into_context(std::forward<C>(on_query), std::forward<D>(on_drop));
         ::z_closure(&c_closure, detail::closures::_zenoh_on_query_call, detail::closures::_zenoh_on_drop, closure);
         ::z_queryable_options_t opts;
@@ -376,11 +405,28 @@ class Session : public Owned<::z_owned_session_t> {
 #if defined(ZENOHCXX_ZENOHC) || Z_FEATURE_SUBSCRIPTION == 1
     /// @brief Options to be passed when declaring a ``Subscriber``.
     struct SubscriberOptions {
-        /// @name Fields
+/// @name Fields
 
+/// Restrict the matching publications that will be received by this Subscribers to the ones
+/// that have the compatible allowed_destination.
+#if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_UNSTABLE_API)
+        Locality allowed_origin = ::zc_locality_default();
+#endif
         /// @name Methods
+
         /// @brief Create default option settings.
         static SubscriberOptions create_default() { return {}; }
+
+       private:
+        friend struct interop::detail::Converter;
+        ::z_subscriber_options_t to_c_opts() {
+            ::z_subscriber_options_t opts;
+            z_subscriber_options_default(&opts);
+#if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_UNSTABLE_API)
+            opts.allowed_origin = this->allowed_origin;
+#endif
+            return opts;
+        }
     };
 
     /// @brief Create a ``Subscriber`` object to receive data from matching ``Publisher`` objects or from
@@ -397,20 +443,18 @@ class Session : public Owned<::z_owned_session_t> {
                                                       SubscriberOptions&& options = SubscriberOptions::create_default(),
                                                       ZResult* err = nullptr) const {
         static_assert(
-            std::is_invocable_r<void, C, const Sample&>::value,
+            std::is_invocable_r<void, C, Sample&>::value,
             "on_sample should be callable with the following signature: void on_sample(zenoh::Sample& sample)");
         static_assert(std::is_invocable_r<void, D>::value,
                       "on_drop should be callable with the following signature: void on_drop()");
         ::z_owned_closure_sample_t c_closure;
         using Cval = std::remove_reference_t<C>;
         using Dval = std::remove_reference_t<D>;
-        using ClosureType = typename detail::closures::Closure<Cval, Dval, void, const Sample&>;
+        using ClosureType = typename detail::closures::Closure<Cval, Dval, void, Sample&>;
         auto closure = ClosureType::into_context(std::forward<C>(on_sample), std::forward<D>(on_drop));
         ::z_closure(&c_closure, detail::closures::_zenoh_on_sample_call, detail::closures::_zenoh_on_drop, closure);
-        ::z_subscriber_options_t opts;
-        z_subscriber_options_default(&opts);
-        (void)options;
-        Subscriber<void> s(zenoh::detail::null_object);
+        ::z_subscriber_options_t opts = interop::detail::Converter::to_c_opts(options);
+        Subscriber<void> s = interop::detail::null<Subscriber<void>>();
         ZResult res = ::z_declare_subscriber(interop::as_loaned_c_ptr(*this), interop::as_owned_c_ptr(s),
                                              interop::as_loaned_c_ptr(key_expr), ::z_move(c_closure), &opts);
         __ZENOH_RESULT_CHECK(res, err, "Failed to declare Subscriber");
@@ -431,19 +475,17 @@ class Session : public Owned<::z_owned_session_t> {
                                        SubscriberOptions&& options = SubscriberOptions::create_default(),
                                        ZResult* err = nullptr) const {
         static_assert(
-            std::is_invocable_r<void, C, const Sample&>::value,
+            std::is_invocable_r<void, C, Sample&>::value,
             "on_sample should be callable with the following signature: void on_sample(zenoh::Sample& sample)");
         static_assert(std::is_invocable_r<void, D>::value,
                       "on_drop should be callable with the following signature: void on_drop()");
         ::z_owned_closure_sample_t c_closure;
         using Cval = std::remove_reference_t<C>;
         using Dval = std::remove_reference_t<D>;
-        using ClosureType = typename detail::closures::Closure<Cval, Dval, void, const Sample&>;
+        using ClosureType = typename detail::closures::Closure<Cval, Dval, void, Sample&>;
         auto closure = ClosureType::into_context(std::forward<C>(on_sample), std::forward<D>(on_drop));
         ::z_closure(&c_closure, detail::closures::_zenoh_on_sample_call, detail::closures::_zenoh_on_drop, closure);
-        ::z_subscriber_options_t opts;
-        z_subscriber_options_default(&opts);
-        (void)options;
+        ::z_subscriber_options_t opts = interop::detail::Converter::to_c_opts(options);
         ZResult res = ::z_declare_background_subscriber(interop::as_loaned_c_ptr(*this),
                                                         interop::as_loaned_c_ptr(key_expr), ::z_move(c_closure), &opts);
         __ZENOH_RESULT_CHECK(res, err, "Failed to declare Background Subscriber");
@@ -464,10 +506,8 @@ class Session : public Owned<::z_owned_session_t> {
         const KeyExpr& key_expr, Channel channel, SubscriberOptions&& options = SubscriberOptions::create_default(),
         ZResult* err = nullptr) const {
         auto cb_handler_pair = channel.template into_cb_handler_pair<Sample>();
-        ::z_subscriber_options_t opts;
-        z_subscriber_options_default(&opts);
-        (void)options;
-        Subscriber<void> s(zenoh::detail::null_object);
+        ::z_subscriber_options_t opts = interop::detail::Converter::to_c_opts(options);
+        Subscriber<void> s = interop::detail::null<Subscriber<void>>();
         ZResult res =
             ::z_declare_subscriber(interop::as_loaned_c_ptr(*this), interop::as_owned_c_ptr(s),
                                    interop::as_loaned_c_ptr(key_expr), ::z_move(cb_handler_pair.first), &opts);
@@ -492,12 +532,13 @@ class Session : public Owned<::z_owned_session_t> {
         /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
         /// release.
         /// @brief The delete operation reliability.
-        Reliability reliability = Reliability::Z_RELIABILITY_BEST_EFFORT;
+        Reliability reliability = z_reliability_default();
 #endif
         /// @brief the timestamp of this message.
         std::optional<Timestamp> timestamp = {};
 
         /// @name Methods
+
         /// @brief Create default option settings.
         static DeleteOptions create_default() { return {}; }
     };
@@ -547,7 +588,7 @@ class Session : public Owned<::z_owned_session_t> {
         /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
         /// release.
         /// @brief The put operation reliability.
-        Reliability reliability = Reliability::Z_RELIABILITY_BEST_EFFORT;
+        Reliability reliability = z_reliability_default();
 #endif
 #if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_UNSTABLE_API)
         /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
@@ -560,6 +601,7 @@ class Session : public Owned<::z_owned_session_t> {
         std::optional<Bytes> attachment = {};
 
         /// @name Methods
+
         /// @brief Create default option settings.
         static PutOptions create_default() { return {}; }
     };
@@ -606,7 +648,7 @@ class Session : public Owned<::z_owned_session_t> {
         /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
         /// release.
         /// @brief The publisher reliability.
-        Reliability reliability = Reliability::Z_RELIABILITY_BEST_EFFORT;
+        Reliability reliability = z_reliability_default();
 #endif
 #if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_UNSTABLE_API)
         /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
@@ -619,8 +661,27 @@ class Session : public Owned<::z_owned_session_t> {
         std::optional<Encoding> encoding = {};
 
         /// @name Methods
+
         /// @brief Create default option settings.
         static PublisherOptions create_default() { return {}; }
+
+       private:
+        friend struct interop::detail::Converter;
+        ::z_publisher_options_t to_c_opts() {
+            ::z_publisher_options_t opts;
+            z_publisher_options_default(&opts);
+            opts.congestion_control = this->congestion_control;
+            opts.priority = this->priority;
+            opts.is_express = this->is_express;
+#if defined(Z_FEATURE_UNSTABLE_API)
+            opts.reliability = this->reliability;
+#endif
+#if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_UNSTABLE_API)
+            opts.allowed_destination = this->allowed_destination;
+#endif
+            opts.encoding = interop::as_moved_c_ptr(this->encoding);
+            return opts;
+        }
     };
 
     /// @brief Create a ``Publisher`` object to publish data to matching ``Subscriber`` objects.
@@ -632,26 +693,89 @@ class Session : public Owned<::z_owned_session_t> {
     Publisher declare_publisher(const KeyExpr& key_expr,
                                 PublisherOptions&& options = PublisherOptions::create_default(),
                                 ZResult* err = nullptr) const {
-        ::z_publisher_options_t opts;
-        z_publisher_options_default(&opts);
-        opts.congestion_control = options.congestion_control;
-        opts.priority = options.priority;
-        opts.is_express = options.is_express;
-#if defined(Z_FEATURE_UNSTABLE_API)
-        opts.reliability = options.reliability;
-#endif
-#if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_UNSTABLE_API)
-        opts.allowed_destination = options.allowed_destination;
-#endif
-        opts.encoding = interop::as_moved_c_ptr(options.encoding);
-
         Publisher p = interop::detail::null<Publisher>();
+        ::z_publisher_options_t opts = interop::detail::Converter::to_c_opts(options);
         ZResult res = ::z_declare_publisher(interop::as_loaned_c_ptr(*this), interop::as_owned_c_ptr(p),
                                             interop::as_loaned_c_ptr(key_expr), &opts);
         __ZENOH_RESULT_CHECK(res, err, "Failed to declare Publisher");
         return p;
     }
 #endif
+
+#if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_UNSTABLE_API)
+    /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
+    /// release.
+    /// @brief Options to be passed when declaring a ``Querier``.
+    struct QuerierOptions {
+        /// @name Fields
+
+        /// @brief The Queryables that should be target of the querier queries.
+        QueryTarget target = QueryTarget::Z_QUERY_TARGET_BEST_MATCHING;
+        /// @brief The replies consolidation strategy to apply on replies to the querier queries.
+        QueryConsolidation consolidation = QueryConsolidation();
+        /// @brief The priority of the querier queries.
+        Priority priority = Z_PRIORITY_DEFAULT;
+        /// @brief The congestion control to apply when routing querier queries.
+        CongestionControl congestion_control = Z_CONGESTION_CONTROL_DEFAULT;
+        /// @brief Whether Zenoh will NOT wait to batch querier queries with other messages to reduce the bandwith.
+        bool is_express = false;
+#if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_UNSTABLE_API)
+        /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
+        /// release.
+        ///
+        /// @brief The accepted replies for the querier queries.
+        /// @note Zenoh-c only.
+        ReplyKeyExpr accept_replies = ::zc_reply_keyexpr_default();
+
+        /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
+        /// release.
+        /// @brief Allowed destination for querier queries.
+        /// @note Zenoh-c only.
+        Locality allowed_destination = ::zc_locality_default();
+#endif
+
+        /// @brief The timeout for the querier queries in milliseconds. 0 means default query timeout from zenoh
+        /// configuration.
+        uint64_t timeout_ms = 0;
+
+        /// @name Methods
+
+        /// @brief Create default option settings.
+        static QuerierOptions create_default() { return {}; }
+    };
+
+    /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
+    /// release.
+    /// @brief Create a ``Querier`` object to send queries to matching ``Queryable`` objects.
+    /// @param key_expr the key expression to match the queryables.
+    /// @param options options passed to querier declaration.
+    /// @param err if not null, the result code will be written to this location, otherwise ZException exception will be
+    /// thrown in case of error.
+    /// @return a ``Querier`` object.
+    Querier declare_querier(const KeyExpr& key_expr, QuerierOptions&& options = QuerierOptions::create_default(),
+                            ZResult* err = nullptr) const {
+        ::z_querier_options_t opts;
+        z_querier_options_default(&opts);
+        opts.target = options.target;
+        opts.consolidation = *interop::as_copyable_c_ptr(options.consolidation);
+        opts.congestion_control = options.congestion_control;
+        opts.priority = options.priority;
+        opts.is_express = options.is_express;
+        ;
+#if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_UNSTABLE_API)
+        opts.accept_replies = options.accept_replies;
+        opts.allowed_destination = options.allowed_destination;
+#endif
+        opts.timeout_ms = options.timeout_ms;
+
+        Querier q = interop::detail::null<Querier>();
+        ZResult res = ::z_declare_querier(interop::as_loaned_c_ptr(*this), interop::as_owned_c_ptr(q),
+                                          interop::as_loaned_c_ptr(key_expr), &opts);
+        __ZENOH_RESULT_CHECK(res, err, "Failed to declare Querier");
+        return q;
+    }
+#endif
+
     /// @brief Fetches the Zenoh IDs of all connected routers.
     /// @param err if not null, the result code will be written to this location, otherwise ZException exception will be
     /// thrown in case of error.
@@ -749,21 +873,19 @@ class Session : public Owned<::z_owned_session_t> {
     }
 #endif
 
-#if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_UNSTABLE_API)
-    /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
-    /// release.
+#if defined(ZENOHCXX_ZENOHC) || Z_FEATURE_LIVELINESS == 1
     /// @brief Options to pass to ``Session::liveliness_declare_token``.
-    /// @note Zenoh-c only.
     struct LivelinessDeclarationOptions {
        protected:
         uint8_t _dummy = 0;
 
        public:
+        /// @name Methods
+
+        /// @brief Create default option settings.
         static LivelinessDeclarationOptions create_default() { return {}; }
     };
 
-    /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
-    /// release.
     /// @brief Declares a liveliness token on the network.
     ///
     /// Liveliness token subscribers on an intersecting key expression will receive a PUT sample when connectivity
@@ -774,34 +896,44 @@ class Session : public Owned<::z_owned_session_t> {
     /// @param err if not null, the result code will be written to this location, otherwise ZException exception will be
     /// thrown in case of error.
     /// @return a ``LivelinessToken``.
-    /// @note Zenoh-c only.
     LivelinessToken liveliness_declare_token(
         const KeyExpr& key_expr,
         LivelinessDeclarationOptions&& options = LivelinessDeclarationOptions::create_default(),
         ZResult* err = nullptr) {
         LivelinessToken t = interop::detail::null<LivelinessToken>();
-        ::zc_liveliness_declaration_options_t opts;
-        zc_liveliness_declaration_options_default(&opts);
+        ::z_liveliness_token_options_t opts;
+        z_liveliness_token_options_default(&opts);
         (void)options;
-        __ZENOH_RESULT_CHECK(::zc_liveliness_declare_token(interop::as_loaned_c_ptr(*this), interop::as_owned_c_ptr(t),
-                                                           interop::as_loaned_c_ptr(key_expr), &opts),
+        __ZENOH_RESULT_CHECK(::z_liveliness_declare_token(interop::as_loaned_c_ptr(*this), interop::as_owned_c_ptr(t),
+                                                          interop::as_loaned_c_ptr(key_expr), &opts),
                              err, "Failed to perform liveliness_declare_token operation");
         return t;
     }
 
-    /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
-    /// release.
     /// @brief Options to pass to ``Session::liveliness_declare_subscriber``.
-    /// @note Zenoh-c only.
     struct LivelinessSubscriberOptions {
        public:
+        /// @name Fields
+
+        /// If true, subscriber will receive the state change notifications for liveliness tokens that were declared
+        /// before its declaration.
         bool history = false;
 
+        /// @name Methods
+
+        /// @brief Create default option settings.
         static LivelinessSubscriberOptions create_default() { return {}; }
+
+       private:
+        friend struct interop::detail::Converter;
+        ::z_liveliness_subscriber_options_t to_c_opts() {
+            ::z_liveliness_subscriber_options_t opts;
+            ::z_liveliness_subscriber_options_default(&opts);
+            opts.history = this->history;
+            return opts;
+        }
     };
 
-    /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
-    /// release.
     /// @brief Declares a subscriber on liveliness tokens that intersect `key_expr`.
     /// @param key_expr the key expression to subscribe to.
     /// @param on_sample the callable that will be called each time a liveliness token status is changed.
@@ -810,34 +942,32 @@ class Session : public Owned<::z_owned_session_t> {
     /// @param err if not null, the result code will be written to this location, otherwise ZException exception will be
     /// thrown in case of error.
     /// @return a ``Subscriber`` object.
-    /// @note Zenoh-c only.
     template <class C, class D>
     [[nodiscard]] Subscriber<void> liveliness_declare_subscriber(
         const KeyExpr& key_expr, C&& on_sample, D&& on_drop,
         LivelinessSubscriberOptions&& options = LivelinessSubscriberOptions::create_default(),
         ZResult* err = nullptr) const {
         static_assert(
-            std::is_invocable_r<void, C, const Sample&>::value,
+            std::is_invocable_r<void, C, Sample&>::value,
             "on_sample should be callable with the following signature: void on_sample(zenoh::Sample& sample)");
         static_assert(std::is_invocable_r<void, D>::value,
                       "on_drop should be callable with the following signature: void on_drop()");
         ::z_owned_closure_sample_t c_closure;
         using Cval = std::remove_reference_t<C>;
         using Dval = std::remove_reference_t<D>;
-        using ClosureType = typename detail::closures::Closure<Cval, Dval, void, const Sample&>;
+        using ClosureType = typename detail::closures::Closure<Cval, Dval, void, Sample&>;
         auto closure = ClosureType::into_context(std::forward<C>(on_sample), std::forward<D>(on_drop));
         ::z_closure(&c_closure, detail::closures::_zenoh_on_sample_call, detail::closures::_zenoh_on_drop, closure);
-        ::zc_liveliness_subscriber_options_t opts;
-        zc_liveliness_subscriber_options_default(&opts);
-        opts.history = options.history;
-        Subscriber<void> s(zenoh::detail::null_object);
-        ZResult res =
-            ::zc_liveliness_declare_subscriber(interop::as_loaned_c_ptr(*this), interop::as_owned_c_ptr(s),
-                                               interop::as_loaned_c_ptr(key_expr), ::z_move(c_closure), &opts);
+        ::z_liveliness_subscriber_options_t opts = interop::detail::Converter::to_c_opts(options);
+        Subscriber<void> s = interop::detail::null<Subscriber<void>>();
+        ZResult res = ::z_liveliness_declare_subscriber(interop::as_loaned_c_ptr(*this), interop::as_owned_c_ptr(s),
+                                                        interop::as_loaned_c_ptr(key_expr), ::z_move(c_closure), &opts);
         __ZENOH_RESULT_CHECK(res, err, "Failed to declare Liveliness Token Subscriber");
         return s;
     }
+#endif
 
+#if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_UNSTABLE_API)
     /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
     /// release.
     /// @brief Declares a background subscriber on liveliness tokens that intersect `key_expr`. The subscriber callback
@@ -855,26 +985,24 @@ class Session : public Owned<::z_owned_session_t> {
         LivelinessSubscriberOptions&& options = LivelinessSubscriberOptions::create_default(),
         ZResult* err = nullptr) const {
         static_assert(
-            std::is_invocable_r<void, C, const Sample&>::value,
+            std::is_invocable_r<void, C, Sample&>::value,
             "on_sample should be callable with the following signature: void on_sample(zenoh::Sample& sample)");
         static_assert(std::is_invocable_r<void, D>::value,
                       "on_drop should be callable with the following signature: void on_drop()");
         ::z_owned_closure_sample_t c_closure;
         using Cval = std::remove_reference_t<C>;
         using Dval = std::remove_reference_t<D>;
-        using ClosureType = typename detail::closures::Closure<Cval, Dval, void, const Sample&>;
+        using ClosureType = typename detail::closures::Closure<Cval, Dval, void, Sample&>;
         auto closure = ClosureType::into_context(std::forward<C>(on_sample), std::forward<D>(on_drop));
         ::z_closure(&c_closure, detail::closures::_zenoh_on_sample_call, detail::closures::_zenoh_on_drop, closure);
-        ::zc_liveliness_subscriber_options_t opts;
-        zc_liveliness_subscriber_options_default(&opts);
-        opts.history = options.history;
+        ::z_liveliness_subscriber_options_t opts = interop::detail::Converter::to_c_opts(options);
         ZResult res = ::zc_liveliness_declare_background_subscriber(
             interop::as_loaned_c_ptr(*this), interop::as_loaned_c_ptr(key_expr), ::z_move(c_closure), &opts);
         __ZENOH_RESULT_CHECK(res, err, "Failed to declare Background Liveliness Token Subscriber");
     }
+#endif
 
-    /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
-    /// release.
+#if defined(ZENOHCXX_ZENOHC) || Z_FEATURE_LIVELINESS == 1
     /// @brief Declare a subscriber on liveliness tokens that intersect `key_expr`.
     /// @tparam Channel the type of channel used to create stream of data (see ``zenoh::channels::FifoChannel`` or
     /// ``zenoh::channels::RingChannel``).
@@ -884,43 +1012,36 @@ class Session : public Owned<::z_owned_session_t> {
     /// @param err if not null, the result code will be written to this location, otherwise ZException exception will be
     /// thrown in case of error.
     /// @return a ``Subscriber`` object.
-    /// @note Zenoh-c only.
     template <class Channel>
     [[nodiscard]] Subscriber<typename Channel::template HandlerType<Sample>> liveliness_declare_subscriber(
         const KeyExpr& key_expr, Channel channel,
         LivelinessSubscriberOptions&& options = LivelinessSubscriberOptions::create_default(),
         ZResult* err = nullptr) const {
         auto cb_handler_pair = channel.template into_cb_handler_pair<Sample>();
-        ::zc_liveliness_subscriber_options_t opts;
-        zc_liveliness_subscriber_options_default(&opts);
-        opts.history = options.history;
-        Subscriber<void> s(zenoh::detail::null_object);
-        ZResult res = ::zc_liveliness_declare_subscriber(interop::as_loaned_c_ptr(*this), interop::as_owned_c_ptr(s),
-                                                         interop::as_loaned_c_ptr(key_expr),
-                                                         ::z_move(cb_handler_pair.first), &opts);
+        ::z_liveliness_subscriber_options_t opts = interop::detail::Converter::to_c_opts(options);
+        Subscriber<void> s = interop::detail::null<Subscriber<void>>();
+        ZResult res = ::z_liveliness_declare_subscriber(interop::as_loaned_c_ptr(*this), interop::as_owned_c_ptr(s),
+                                                        interop::as_loaned_c_ptr(key_expr),
+                                                        ::z_move(cb_handler_pair.first), &opts);
         __ZENOH_RESULT_CHECK(res, err, "Failed to declare Liveliness Token Subscriber");
         if (res != Z_OK) ::z_drop(::z_move(*interop::as_moved_c_ptr(cb_handler_pair.second)));
         return Subscriber<typename Channel::template HandlerType<Sample>>(std::move(s),
                                                                           std::move(cb_handler_pair.second));
     }
 
-    /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
-    /// release.
     /// @brief Options to pass to ``Session::liveliness_get``.
-    /// @note Zenoh-c only.
     struct LivelinessGetOptions {
         /// @name Fields
 
         /// @brief The timeout for the query in milliseconds.
-        uint32_t timeout_ms = 10000;
+        uint64_t timeout_ms = 10000;
 
         /// @name Methods
+
         /// @brief Create default option settings.
         static LivelinessGetOptions create_default() { return {}; }
     };
 
-    /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
-    /// release.
     /// @brief Query liveliness tokens currently on the network with a key expression intersecting with `key_expr`.
     ///
     /// @param key_expr: the key expression to query liveliness tokens for.
@@ -929,32 +1050,29 @@ class Session : public Owned<::z_owned_session_t> {
     /// @param options: additional options for the liveliness get operation.
     /// @param err if not null, the result code will be written to this location, otherwise ZException exception will be
     /// thrown in case of error.
-    /// @note Zenoh-c only.
     template <class C, class D>
     void liveliness_get(const KeyExpr& key_expr, C&& on_reply, D&& on_drop,
                         LivelinessGetOptions&& options = LivelinessGetOptions::create_default(),
                         ZResult* err = nullptr) const {
-        static_assert(std::is_invocable_r<void, C, const Reply&>::value,
+        static_assert(std::is_invocable_r<void, C, Reply&>::value,
                       "on_reply should be callable with the following signature: void on_reply(zenoh::Reply& reply)");
         static_assert(std::is_invocable_r<void, D>::value,
                       "on_drop should be callable with the following signature: void on_drop()");
         ::z_owned_closure_reply_t c_closure;
         using Cval = std::remove_reference_t<C>;
         using Dval = std::remove_reference_t<D>;
-        using ClosureType = typename detail::closures::Closure<Cval, Dval, void, const Reply&>;
+        using ClosureType = typename detail::closures::Closure<Cval, Dval, void, Reply&>;
         auto closure = ClosureType::into_context(std::forward<C>(on_reply), std::forward<D>(on_drop));
         ::z_closure(&c_closure, detail::closures::_zenoh_on_reply_call, detail::closures::_zenoh_on_drop, closure);
-        ::zc_liveliness_get_options_t opts;
-        zc_liveliness_get_options_default(&opts);
+        ::z_liveliness_get_options_t opts;
+        z_liveliness_get_options_default(&opts);
         opts.timeout_ms = options.timeout_ms;
 
-        __ZENOH_RESULT_CHECK(::zc_liveliness_get(interop::as_loaned_c_ptr(*this), interop::as_loaned_c_ptr(key_expr),
-                                                 ::z_move(c_closure), &opts),
+        __ZENOH_RESULT_CHECK(::z_liveliness_get(interop::as_loaned_c_ptr(*this), interop::as_loaned_c_ptr(key_expr),
+                                                ::z_move(c_closure), &opts),
                              err, "Failed to perform liveliness_get operation");
     }
 
-    /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
-    /// release.
     /// @brief Query liveliness tokens currently on the network with a key expression intersecting with `key_expr`.
     /// @tparam Channel the type of channel used to create stream of data (see ``zenoh::channels::FifoChannel`` or
     /// ``zenoh::channels::RingChannel``).
@@ -964,24 +1082,22 @@ class Session : public Owned<::z_owned_session_t> {
     /// @param err if not null, the result code will be written to this location, otherwise ZException exception will be
     /// thrown in case of error.
     /// @return reply handler.
-    /// @note Zenoh-c only.
     template <class Channel>
     typename Channel::template HandlerType<Reply> liveliness_get(
         const KeyExpr& key_expr, Channel channel,
         LivelinessGetOptions&& options = LivelinessGetOptions::create_default(), ZResult* err = nullptr) const {
         auto cb_handler_pair = channel.template into_cb_handler_pair<Reply>();
-        ::zc_liveliness_get_options_t opts;
-        zc_liveliness_get_options_default(&opts);
+        ::z_liveliness_get_options_t opts;
+        z_liveliness_get_options_default(&opts);
         opts.timeout_ms = options.timeout_ms;
 
-        ZResult res = ::zc_liveliness_get(interop::as_loaned_c_ptr(*this), interop::as_loaned_c_ptr(key_expr),
-                                          ::z_move(cb_handler_pair.first), &opts);
+        ZResult res = ::z_liveliness_get(interop::as_loaned_c_ptr(*this), interop::as_loaned_c_ptr(key_expr),
+                                         ::z_move(cb_handler_pair.first), &opts);
         __ZENOH_RESULT_CHECK(res, err, "Failed to perform liveliness_get operation");
         if (res != Z_OK) ::z_drop(interop::as_moved_c_ptr(cb_handler_pair.second));
         return std::move(cb_handler_pair.second);
     }
 
-#endif
     /// @brief Create Timestamp from session id.
     /// @param err if not null, the result code will be written to this location, otherwise ZException exception will be
     /// thrown in case of error.
@@ -1002,5 +1118,23 @@ class Session : public Owned<::z_owned_session_t> {
         (void)options;
         __ZENOH_RESULT_CHECK(::z_close(interop::as_loaned_c_ptr(*this), nullptr), err, "Failed to close the session");
     }
+#endif
+
+    /// @brief Check if session is closed.
+    /// @return ``true`` if session is closed, ``false`` otherwise.
+    bool is_closed() const { return ::z_session_is_closed(interop::as_loaned_c_ptr(*this)); }
+
+#if defined(Z_FEATURE_UNSTABLE_API)
+    /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
+    /// release.
+    /// @brief Get access to extension functionality.
+    /// @tparam Ext Session interface extension.
+    /// @return Session interface extension providing access to non-core Zenoh functionality.
+    template <class Ext = zenoh::ext::SessionExt>
+    Ext ext() const {
+        return Ext(*this);
+    }
+#endif
 };
+
 }  // namespace zenoh

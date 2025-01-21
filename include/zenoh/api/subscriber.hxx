@@ -20,6 +20,9 @@
 #include "base.hxx"
 #include "interop.hxx"
 #include "keyexpr.hxx"
+#if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_UNSTABLE_API)
+#include "source_info.hxx"
+#endif
 
 namespace zenoh {
 
@@ -31,11 +34,20 @@ class SubscriberBase : public Owned<::z_owned_subscriber_t> {
     SubscriberBase(::z_owned_subscriber_t* s) : Owned(s){};
 
    public:
-    /// @brief Get the key expression of the subscriber
+    /// @brief Get the key expression of the subscriber.
     const KeyExpr& get_keyexpr() const {
         return interop::as_owned_cpp_ref<KeyExpr>(::z_subscriber_keyexpr(interop::as_loaned_c_ptr(*this)));
     }
-    friend class zenoh::Session;
+
+#if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_UNSTABLE_API)
+    /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
+    /// release.
+    /// @brief Get the id of the subscriber.
+    /// @return id of this subscriber.
+    EntityGlobalId get_id() const {
+        return interop::into_copyable_cpp_obj<EntityGlobalId>(::z_subscriber_id(interop::as_loaned_c_ptr(*this)));
+    }
+#endif
 };
 
 }  // namespace detail
@@ -46,11 +58,10 @@ template <>
 class Subscriber<void> : public detail::SubscriberBase {
    protected:
     using SubscriberBase::SubscriberBase;
-    friend class Session;
+    friend struct interop::detail::Converter;
 
    public:
     /// @name Methods
-    using SubscriberBase::get_keyexpr;
 
     /// @brief Undeclare subscriber.
     /// @param err if not null, the result code will be written to this location, otherwise ZException exception will be
@@ -83,7 +94,6 @@ class Subscriber : public detail::SubscriberBase {
         : SubscriberBase(interop::as_owned_c_ptr(s)), _handler(std::move(handler)) {}
 
     /// @name Methods
-    using SubscriberBase::get_keyexpr;
 
     /// @brief Undeclare subscriber, and return its handler, which can still be used to process any messages received
     /// prior to undeclaration.

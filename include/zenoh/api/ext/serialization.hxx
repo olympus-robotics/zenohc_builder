@@ -13,6 +13,9 @@
 
 #pragma once
 
+#if __cplusplus >= 202002L
+#include <span>
+#endif
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -236,6 +239,13 @@ bool __zenoh_serialize_with_serializer(zenoh::ext::Serializer& serializer, const
     return __serialize_sequence_with_serializer(serializer, value.begin(), value.end(), value.size(), err);
 }
 
+#if __cplusplus >= 202002L
+template <class T, std::size_t Extent>
+bool __zenoh_serialize_with_serializer(zenoh::ext::Serializer& serializer, std::span<T, Extent> value, ZResult* err) {
+    return __serialize_sequence_with_serializer(serializer, value.begin(), value.end(), value.size(), err);
+}
+#endif
+
 template <class T>
 bool serialize_with_serializer(zenoh::ext::Serializer& serializer, const T& t, ZResult* err) {
     return __zenoh_serialize_with_serializer(serializer, t, err);
@@ -268,6 +278,7 @@ inline bool __zenoh_deserialize_with_deserializer(zenoh::ext::Deserializer& dese
     __ZENOH_RESULT_CHECK(::ze_deserializer_deserialize_string(interop::as_copyable_c_ptr(deserializer), &s), err,
                          "Deserialization failure");
     value = std::string(::z_string_data(::z_loan(s)), ::z_string_len(::z_loan(s)));
+    ::z_drop(::z_move(s));
     return err == nullptr || *err == Z_OK;
 }
 

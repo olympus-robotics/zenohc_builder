@@ -40,39 +40,36 @@ endmacro()
 
 set(ZENOHC_BUILD_WITH_UNSTABLE_API TRUE)
 set(ZENOHC_BUILD_WITH_SHARED_MEMORY TRUE)
-# Compute the installation prefix relative to this file.
-get_filename_component(_IMPORT_PREFIX "${CMAKE_CURRENT_LIST_FILE}" PATH)
-get_filename_component(_IMPORT_PREFIX "${_IMPORT_PREFIX}" PATH)
-get_filename_component(_IMPORT_PREFIX "${_IMPORT_PREFIX}" PATH)
-get_filename_component(_IMPORT_PREFIX "${_IMPORT_PREFIX}" PATH)
-if(_IMPORT_PREFIX STREQUAL "/")
-  set(_IMPORT_PREFIX "")
+
+
+if(NOT TARGET __zenohc_shared)
+    add_library(__zenohc_shared SHARED IMPORTED GLOBAL)
+    add_library(zenohc::shared ALIAS __zenohc_shared)
+    set_target_properties(__zenohc_shared PROPERTIES
+        IMPORTED_NO_SONAME TRUE
+        INTERFACE_COMPILE_DEFINITION ZENOHC_DYN_LIB
+        IMPORTED_LOCATION "${PACKAGE_PREFIX_DIR}/lib/libzenohc.so"
+        INTERFACE_INCLUDE_DIRECTORIES "${PACKAGE_PREFIX_DIR}/include"
+    )
+    if(NOT ("" STREQUAL ""))
+        set_property(TARGET __zenohc_shared PROPERTY IMPORTED_IMPLIB "${PACKAGE_PREFIX_DIR}/lib/")
+    endif()
+endif()
+if(NOT TARGET __zenohc_static)
+    add_library(__zenohc_static STATIC IMPORTED GLOBAL)
+    add_library(zenohc::static ALIAS __zenohc_static)
+    target_link_libraries(__zenohc_static INTERFACE rt;pthread;m;dl)
+    set_target_properties(__zenohc_static PROPERTIES
+        IMPORTED_LOCATION "${PACKAGE_PREFIX_DIR}/lib/libzenohc.a"
+        INTERFACE_INCLUDE_DIRECTORIES "${PACKAGE_PREFIX_DIR}/include"
+    )
 endif()
 
-if (TRUE)
-    if(NOT TARGET __zenohc_shared)
-        add_library(__zenohc_shared SHARED IMPORTED GLOBAL)
-        add_library(zenohc::shared ALIAS __zenohc_shared)
-        set_target_properties(__zenohc_shared PROPERTIES
-            IMPORTED_NO_SONAME TRUE
-            INTERFACE_COMPILE_DEFINITION ZENOHC_DYN_LIB
-            IMPORTED_LOCATION "${_IMPORT_PREFIX}/lib/libzenohc.so"
-            INTERFACE_INCLUDE_DIRECTORIES "${_IMPORT_PREFIX}/include"
-        )
+if(NOT TARGET zenohc::lib)
+    if(TRUE)
         add_library(zenohc::lib ALIAS __zenohc_shared)
-        if(NOT ("" STREQUAL ""))
-            set_property(TARGET __zenohc_shared PROPERTY IMPORTED_IMPLIB "${_IMPORT_PREFIX}/lib/")
-        endif()
-    endif()
-else()
-    if(NOT TARGET __zenohc_static)
-        add_library(__zenohc_static STATIC IMPORTED GLOBAL)
-        add_library(zenohc::static ALIAS __zenohc_static)
-        target_link_libraries(__zenohc_static INTERFACE )
-        set_target_properties(__zenohc_static PROPERTIES
-            IMPORTED_LOCATION "${_IMPORT_PREFIX}/lib/"
-            INTERFACE_INCLUDE_DIRECTORIES "${_IMPORT_PREFIX}/include"
-        )
+    else()
         add_library(zenohc::lib ALIAS __zenohc_static)
     endif()
 endif()
+

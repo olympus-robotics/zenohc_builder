@@ -183,19 +183,26 @@ typedef struct zc_threadsafe_context_t {
 } zc_threadsafe_context_t;
 #endif
 /**
- * A serialized Zenoh data.
+ * A loaned Zenoh data.
+ */
+typedef struct ALIGN(8) z_loaned_bytes_t {
+  uint8_t _0[40];
+} z_loaned_bytes_t;
+/**
+ * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
+ * @brief A loaned ZShm slice.
+ */
+typedef struct ALIGN(8) z_loaned_shm_t {
+  uint8_t _0[80];
+} z_loaned_shm_t;
+/**
+ * A Zenoh data.
  *
  * To minimize copies and reallocations, Zenoh may provide data in several separate buffers.
  */
 typedef struct ALIGN(8) z_owned_bytes_t {
   uint8_t _0[40];
 } z_owned_bytes_t;
-/**
- * A loaned serialized Zenoh data.
- */
-typedef struct ALIGN(8) z_loaned_bytes_t {
-  uint8_t _0[40];
-} z_loaned_bytes_t;
 /**
  * A loaned sequence of bytes.
  */
@@ -225,24 +232,17 @@ typedef struct ALIGN(8) z_owned_string_t {
   uint8_t _0[32];
 } z_owned_string_t;
 /**
- * A reader for payload.
- */
-typedef struct ALIGN(8) z_bytes_reader_t {
-  uint8_t _0[24];
-} z_bytes_reader_t;
-/**
  * A contiguous sequence of bytes owned by some other entity.
  */
 typedef struct ALIGN(8) z_view_slice_t {
   uint8_t _0[32];
 } z_view_slice_t;
 /**
- * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
- * @brief A loaned ZShm slice.
+ * A reader for payload.
  */
-typedef struct ALIGN(8) z_loaned_shm_t {
-  uint8_t _0[80];
-} z_loaned_shm_t;
+typedef struct ALIGN(8) z_bytes_reader_t {
+  uint8_t _0[24];
+} z_bytes_reader_t;
 /**
  * An loaned writer for payload.
  */
@@ -262,13 +262,6 @@ typedef struct ALIGN(8) z_owned_bytes_writer_t {
 typedef struct ALIGN(8) z_owned_chunk_alloc_result_t {
   uint8_t _0[32];
 } z_owned_chunk_alloc_result_t;
-/**
- * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
- * @brief A loaned ChunkAllocResult.
- */
-typedef struct ALIGN(8) z_loaned_chunk_alloc_result_t {
-  uint8_t _0[32];
-} z_loaned_chunk_alloc_result_t;
 /**
  * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
  * @brief Unique segment identifier.
@@ -310,6 +303,12 @@ typedef struct z_allocated_chunk_t {
 typedef struct ALIGN(8) z_loaned_session_t {
   uint8_t _0[8];
 } z_loaned_session_t;
+/**
+ * An owned Close handle
+ */
+typedef struct ALIGN(8) zc_owned_concurrent_close_handle_t {
+  uint8_t _0[8];
+} zc_owned_concurrent_close_handle_t;
 /**
  * A loaned hello message.
  */
@@ -396,13 +395,13 @@ typedef struct ALIGN(8) z_loaned_mutex_t {
  * An owned Zenoh configuration.
  */
 typedef struct ALIGN(8) z_owned_config_t {
-  uint8_t _0[1720];
+  uint8_t _0[1816];
 } z_owned_config_t;
 /**
  * A loaned Zenoh configuration.
  */
 typedef struct ALIGN(8) z_loaned_config_t {
-  uint8_t _0[1720];
+  uint8_t _0[1816];
 } z_loaned_config_t;
 /**
  * A loaned key expression.
@@ -451,6 +450,14 @@ typedef struct ALIGN(8) z_owned_publisher_t {
 typedef struct ALIGN(8) z_owned_encoding_t {
   uint8_t _0[48];
 } z_owned_encoding_t;
+/**
+ * An owned Zenoh querier.
+ *
+ * Sends queries to matching queryables.
+ */
+typedef struct ALIGN(8) z_owned_querier_t {
+  uint8_t _0[80];
+} z_owned_querier_t;
 /**
  * An owned Zenoh <a href="https://zenoh.io/docs/manual/abstractions/#queryable"> queryable </a>.
  *
@@ -569,6 +576,16 @@ typedef struct ALIGN(8) z_owned_string_array_t {
   uint8_t _0[24];
 } z_owned_string_array_t;
 /**
+ * @brief A liveliness token that can be used to provide the network with information about connectivity to its
+ * declarer: when constructed, a PUT sample will be received by liveliness subscribers on intersecting key
+ * expressions.
+ *
+ * A DELETE on the token's key expression will be received by subscribers if the token is destroyed, or if connectivity between the subscriber and the token's creator is lost.
+ */
+typedef struct ALIGN(8) z_owned_liveliness_token_t {
+  uint8_t _0[16];
+} z_owned_liveliness_token_t;
+/**
  * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
  * @brief An owned MemoryLayout.
  */
@@ -644,6 +661,9 @@ typedef struct ALIGN(8) z_owned_task_t {
 typedef struct ALIGN(8) z_view_string_t {
   uint8_t _0[32];
 } z_view_string_t;
+typedef struct ALIGN(8) z_loaned_liveliness_token_t {
+  uint8_t _0[16];
+} z_loaned_liveliness_token_t;
 /**
  * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
  * @brief A loaned MemoryLayout.
@@ -663,6 +683,12 @@ typedef struct ALIGN(8) z_loaned_shm_client_storage_t {
 typedef struct ALIGN(8) z_loaned_publisher_t {
   uint8_t _0[112];
 } z_loaned_publisher_t;
+/**
+ * A loaned Zenoh queryable.
+ */
+typedef struct ALIGN(8) z_loaned_querier_t {
+  uint8_t _0[80];
+} z_loaned_querier_t;
 /**
  * A loaned Zenoh queryable.
  */
@@ -706,6 +732,9 @@ typedef struct ALIGN(4) z_loaned_source_info_t {
  */
 #if (defined(Z_FEATURE_SHARED_MEMORY) && defined(Z_FEATURE_UNSTABLE_API))
 typedef struct zc_shm_segment_callbacks_t {
+  /**
+   * Obtain the actual region of memory identified by it's id.
+   */
   uint8_t *(*map_fn)(z_chunk_id_t chunk_id, void *context);
 } zc_shm_segment_callbacks_t;
 #endif
@@ -725,6 +754,9 @@ typedef struct z_shm_segment_t {
  */
 #if (defined(Z_FEATURE_SHARED_MEMORY) && defined(Z_FEATURE_UNSTABLE_API))
 typedef struct zc_shm_client_callbacks_t {
+  /**
+   * Attach to particular shared memory segment
+   */
   bool (*attach_fn)(struct z_shm_segment_t *out_segment, z_segment_id_t segment_id, void *context);
 } zc_shm_client_callbacks_t;
 #endif
@@ -830,20 +862,9 @@ typedef struct zc_loaned_closure_matching_status_t {
 #endif
 /**
  * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
- * @brief A liveliness token that can be used to provide the network with information about connectivity to its
- * declarer: when constructed, a PUT sample will be received by liveliness subscribers on intersecting key
- * expressions.
- *
- * A DELETE on the token's key expression will be received by subscribers if the token is destroyed, or if connectivity between the subscriber and the token's creator is lost.
- */
-typedef struct ALIGN(8) zc_owned_liveliness_token_t {
-  uint8_t _0[24];
-} zc_owned_liveliness_token_t;
-/**
- * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
  * @brief An owned Zenoh matching listener.
  *
- * A listener that sends notifications when the [`MatchingStatus`] of a publisher changes.
+ * A listener that sends notifications when the [`MatchingStatus`] of a publisher or querier changes.
  * Dropping the corresponding publisher, also drops matching listener.
  */
 typedef struct ALIGN(8) zc_owned_matching_listener_t {
@@ -858,10 +879,38 @@ typedef struct ALIGN(8) zc_owned_shm_client_list_t {
 } zc_owned_shm_client_list_t;
 /**
  * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
+ * @brief A loaned Zenoh advanced publisher.
  */
-typedef struct ALIGN(8) zc_loaned_liveliness_token_t {
-  uint8_t _0[24];
-} zc_loaned_liveliness_token_t;
+typedef struct ALIGN(8) ze_loaned_advanced_publisher_t {
+  uint8_t _0[200];
+} ze_loaned_advanced_publisher_t;
+/**
+ * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
+ * @brief An owned Zenoh advanced publisher.
+ *
+ * In addition to publishing the data,
+ * it also maintains the storage, allowing matching subscribers to retrive missed samples.
+ */
+typedef struct ALIGN(8) ze_owned_advanced_publisher_t {
+  uint8_t _0[200];
+} ze_owned_advanced_publisher_t;
+/**
+ * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
+ * @brief A loaned Zenoh advanced subscriber.
+ */
+typedef struct ALIGN(8) ze_loaned_advanced_subscriber_t {
+  uint8_t _0[152];
+} ze_loaned_advanced_subscriber_t;
+/**
+ * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
+ * @brief An owned Zenoh advanced subscriber.
+ *
+ * In addition to receiving the data it is subscribed to,
+ * it is also able to receive notifications regarding missed samples and/or automatically recover them.
+ */
+typedef struct ALIGN(8) ze_owned_advanced_subscriber_t {
+  uint8_t _0[152];
+} ze_owned_advanced_subscriber_t;
 /**
  * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
  * @brief An owned Zenoh publication cache.

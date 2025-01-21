@@ -1,10 +1,9 @@
 #!/bin/bash
 
-VERSION=1.0.0
+VERSION=1.1.1
 
 ZENOHC_DIR=zenoh-c-${VERSION}
 ZENOHC_BUILD_DIR=${ZENOHC_DIR}-build
-
 
 wget https://github.com/eclipse-zenoh/zenoh-c/archive/${VERSION}.tar.gz -O zenoh-c.tar.gz
 tar -xvf zenoh-c.tar.gz
@@ -18,13 +17,11 @@ cmake \
   -DZENOHC_CARGO_CHANNEL=+stable \
   -DZENOHC_BUILD_WITH_SHARED_MEMORY=TRUE \
   -DZENOHC_BUILD_WITH_UNSTABLE_API=TRUE \
-  -DCMAKE_BUILD_TYPE=Release  \
+  -DCMAKE_BUILD_TYPE=Release \
   -DBUILD_TESTING=OFF \
   -DCMAKE_TOOLCHAIN_FILE=${PWD}/toolchain_clang.cmake
 cmake --build ${ZENOHC_BUILD_DIR}
 cmake --install ${ZENOHC_BUILD_DIR}
-
-
 
 ZENOHCPP_DIR=zenoh-cpp-${VERSION}
 ZENOHCPP_BUILD_DIR=${ZENOHCPP_DIR}-build
@@ -40,9 +37,8 @@ cmake . \
   -Dzenohc_DIR=../install/lib/cmake/zenohc \
   -DZ_FEATURE_UNSTABLE_API=1 \
   -DZENOHCXX_EXAMPLES_PROTOBUF=OFF \
-  -DCMAKE_BUILD_TYPE=Release  \
+  -DCMAKE_BUILD_TYPE=Release \
   -DBUILD_TESTING=OFF \
   -DCMAKE_TOOLCHAIN_FILE=${PWD}/toolchain_clang.cmake
-cmake --build  ${ZENOHCPP_BUILD_DIR}
-cmake --install  ${ZENOHCPP_BUILD_DIR}
-
+cmake --build ${ZENOHCPP_BUILD_DIR}
+cmake --install ${ZENOHCPP_BUILD_DIR}

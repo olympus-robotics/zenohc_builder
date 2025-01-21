@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <functional>
 #include <optional>
 
 #include "../../base.hxx"
@@ -57,6 +58,16 @@ class ZShm : public Owned<::z_owned_shm_t> {
         z_owned_shm_mut_t mut_inner;
         if (Z_OK == ::z_shm_mut_try_from_immut(&mut_inner, z_move(immut._0), &immut._0)) {
             return std::move(interop::as_owned_cpp_ref<ZShmMut>(&mut_inner));
+        }
+        return std::nullopt;
+    }
+
+    /// @brief Create a new ZShmMut& from ZShm&.
+    /// @param immut immutable buffer, NOTE: the value will not be moved if nullopt returned.
+    /// @return mutable buffer or empty option if buffer mutation is impossible.
+    static std::optional<std::reference_wrapper<ZShmMut>> try_mutate(ZShm& immut) {
+        if (z_loaned_shm_mut_t* shm_mut = ::z_shm_try_reloan_mut(z_loan_mut(immut._0))) {
+            return std::ref(interop::as_owned_cpp_ref<ZShmMut>(shm_mut));
         }
         return std::nullopt;
     }

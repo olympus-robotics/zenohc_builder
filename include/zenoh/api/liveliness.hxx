@@ -13,7 +13,6 @@
 
 #pragma once
 
-#if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_UNSTABLE_API)
 #include "base.hxx"
 #include "interop.hxx"
 
@@ -21,7 +20,6 @@ namespace zenoh {
 
 class Session;
 
-/// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
 /// @brief A liveliness token that can be used to provide the network with information about connectivity to its
 /// declarer.
 ///
@@ -29,8 +27,7 @@ class Session;
 ///
 /// A DELETE on the token's key expression will be received by subscribers if the token is destroyed, or if connectivity
 /// between the subscriber and the token's creator is lost.
-/// @note Zenoh-c only.
-class LivelinessToken : public Owned<::zc_owned_liveliness_token_t> {
+class LivelinessToken : public Owned<::z_owned_liveliness_token_t> {
     LivelinessToken(zenoh::detail::null_object_t) : Owned(nullptr){};
     friend struct interop::detail::Converter;
 
@@ -39,10 +36,9 @@ class LivelinessToken : public Owned<::zc_owned_liveliness_token_t> {
     /// @param err if not null, the result code will be written to this location, otherwise ZException exception will be
     /// thrown in case of error.
     void undeclare(ZResult* err = nullptr) && {
-        __ZENOH_RESULT_CHECK(::zc_liveliness_undeclare_token(interop::as_moved_c_ptr(*this)), err,
+        __ZENOH_RESULT_CHECK(::z_liveliness_undeclare_token(interop::as_moved_c_ptr(*this)), err,
                              "Failed to undeclare liveliness token");
     }
 };
 
 }  // namespace zenoh
-#endif

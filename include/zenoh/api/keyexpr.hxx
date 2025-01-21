@@ -22,7 +22,7 @@ namespace zenoh {
 
 /// @brief A Zenoh <a href="https://zenoh.io/docs/manual/abstractions/#key-expression"> key expression </a>.
 ///
-/// Key expression can be registered in the ``zenoh::Session`` object with ``zenoh::Session::declare_keyexpr()`` method.
+/// Key expression can be registered in the ``zenoh::Session`` object with ``zenoh::Session::declare_keyexpr`` method.
 /// The unique id is internally assinged to the key expression string in this case. This allows to reduce bandwith usage
 /// when transporting key expressions.
 
@@ -39,7 +39,7 @@ class KeyExpr : public Owned<::z_owned_keyexpr_t> {
     /// @param autocanonize if ``true`` the key_expr will be autocanonized, prior to constructing key expression.
     /// @param err if not null, the result code will be written to this location, otherwise ZException exception will be
     /// thrown in case of error.
-    explicit KeyExpr(std::string_view key_expr, bool autocanonize = true, ZResult* err = nullptr) : Owned(nullptr) {
+    KeyExpr(std::string_view key_expr, bool autocanonize = true, ZResult* err = nullptr) : Owned(nullptr) {
         if (autocanonize) {
             size_t s = key_expr.size();
             __ZENOH_RESULT_CHECK(::z_keyexpr_from_substr_autocanonize(&this->_0, key_expr.data(), &s), err,
@@ -67,6 +67,13 @@ class KeyExpr : public Owned<::z_owned_keyexpr_t> {
     /// thrown in case of error.
     KeyExpr(const char* key_expr, bool autocanonize = true, ZResult* err = nullptr)
         : KeyExpr(std::string_view(key_expr), autocanonize, err){};
+
+    /// @brief Copy constructor.
+    KeyExpr(const KeyExpr& other) : KeyExpr(zenoh::detail::null_object) {
+        ::z_keyexpr_clone(&this->_0, interop::as_loaned_c_ptr(other));
+    };
+
+    KeyExpr(KeyExpr&& other) = default;
 
     /// @name Methods
     /// @brief Get underlying key expression string.
@@ -186,6 +193,17 @@ class KeyExpr : public Owned<::z_owned_keyexpr_t> {
     /// @return ``false`` if both key expressions are equal (i.e. they represent the same set of resources), ``true``
     /// otherwise.
     bool operator!=(const KeyExpr& other) const { return !(*this == other); }
+
+    /// @brief Assignment operator.
+    KeyExpr& operator=(const KeyExpr& other) {
+        if (this != &other) {
+            ::z_drop(z_move(this->_0));
+            ::z_keyexpr_clone(&this->_0, interop::as_loaned_c_ptr(other));
+        }
+        return *this;
+    };
+
+    KeyExpr& operator=(KeyExpr&& other) = default;
 };
 
 }  // namespace zenoh

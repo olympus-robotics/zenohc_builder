@@ -22,7 +22,9 @@
 #include "api/hello.hxx"
 #include "api/id.hxx"
 #include "api/keyexpr.hxx"
+#if defined(ZENOHCXX_ZENOHC) || Z_FEATURE_LIVELINESS == 1
 #include "api/liveliness.hxx"
+#endif
 #include "api/logging.hxx"
 #include "api/publisher.hxx"
 #include "api/query.hxx"
@@ -34,7 +36,14 @@
 #include "api/session.hxx"
 #include "api/subscriber.hxx"
 #include "api/timestamp.hxx"
-#if defined Z_FEATURE_SHARED_MEMORY && defined Z_FEATURE_UNSTABLE_API
+#if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_UNSTABLE_API)
+#include "api/querier.hxx"
+#endif
+#if defined(Z_FEATURE_SHARED_MEMORY) && defined(Z_FEATURE_UNSTABLE_API)
 #include "api/shm/shm.hxx"
 #endif
 #include "api/ext/serialization.hxx"
+#if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_UNSTABLE_API)
+#include "api/ext/session_ext.hxx"
+#include "api/matching.hxx"
+#endif
