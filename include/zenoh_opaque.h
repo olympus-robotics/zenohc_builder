@@ -113,7 +113,7 @@ typedef enum zc_buf_layout_alloc_status_t {
  * @brief An owned ZShmMut slice.
  */
 typedef struct ALIGN(8) z_owned_shm_mut_t {
-  uint8_t _0[80];
+  uint8_t _0[32];
 } z_owned_shm_mut_t;
 /**
  * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
@@ -193,7 +193,7 @@ typedef struct ALIGN(8) z_loaned_bytes_t {
  * @brief A loaned ZShm slice.
  */
 typedef struct ALIGN(8) z_loaned_shm_t {
-  uint8_t _0[80];
+  uint8_t _0[32];
 } z_loaned_shm_t;
 /**
  * A Zenoh data.
@@ -220,7 +220,7 @@ typedef struct ALIGN(8) z_loaned_string_t {
  * @brief An owned ZShm slice.
  */
 typedef struct ALIGN(8) z_owned_shm_t {
-  uint8_t _0[80];
+  uint8_t _0[32];
 } z_owned_shm_t;
 typedef struct ALIGN(8) z_owned_slice_t {
   uint8_t _0[32];
@@ -321,6 +321,15 @@ typedef struct ALIGN(8) z_loaned_hello_t {
 typedef struct z_loaned_closure_hello_t {
   size_t _0[3];
 } z_loaned_closure_hello_t;
+/**
+ * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
+ * @brief Loaned closure.
+ */
+#if defined(Z_FEATURE_UNSTABLE_API)
+typedef struct z_loaned_closure_matching_status_t {
+  size_t _0[3];
+} z_loaned_closure_matching_status_t;
+#endif
 /**
  * A loaned Zenoh query.
  */
@@ -587,6 +596,16 @@ typedef struct ALIGN(8) z_owned_liveliness_token_t {
 } z_owned_liveliness_token_t;
 /**
  * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
+ * @brief An owned Zenoh matching listener.
+ *
+ * A listener that sends notifications when the [`MatchingStatus`] of a publisher or querier changes.
+ * Dropping the corresponding publisher, also drops matching listener.
+ */
+typedef struct ALIGN(8) z_owned_matching_listener_t {
+  uint8_t _0[24];
+} z_owned_matching_listener_t;
+/**
+ * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
  * @brief An owned MemoryLayout.
  */
 typedef struct ALIGN(8) z_owned_memory_layout_t {
@@ -772,7 +791,7 @@ typedef struct ALIGN(8) zc_loaned_shm_client_list_t {
  * @brief A loaned ZShmMut slice.
  */
 typedef struct ALIGN(8) z_loaned_shm_mut_t {
-  uint8_t _0[80];
+  uint8_t _0[32];
 } z_loaned_shm_mut_t;
 /**
  * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
@@ -851,25 +870,6 @@ typedef struct ALIGN(8) z_view_keyexpr_t {
 typedef struct zc_loaned_closure_log_t {
   size_t _0[3];
 } zc_loaned_closure_log_t;
-/**
- * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
- * @brief Loaned closure.
- */
-#if defined(Z_FEATURE_UNSTABLE_API)
-typedef struct zc_loaned_closure_matching_status_t {
-  size_t _0[3];
-} zc_loaned_closure_matching_status_t;
-#endif
-/**
- * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
- * @brief An owned Zenoh matching listener.
- *
- * A listener that sends notifications when the [`MatchingStatus`] of a publisher or querier changes.
- * Dropping the corresponding publisher, also drops matching listener.
- */
-typedef struct ALIGN(8) zc_owned_matching_listener_t {
-  uint8_t _0[24];
-} zc_owned_matching_listener_t;
 /**
  * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
  * @brief An owned list of SHM Clients.

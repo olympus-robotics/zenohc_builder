@@ -3,6 +3,6 @@ prefix=/workspaces/zenohc_builder
 Name: zenohc
 Description: The C bindings for Zenoh
 URL: https://github.com/eclipse-zenoh/zenoh-c
-Version: 1.1.1
+Version: 1.2.0
 Cflags: -I${prefix}/include
 Libs: -L${prefix}/lib -llibzenohc

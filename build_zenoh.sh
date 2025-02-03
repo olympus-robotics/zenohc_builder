@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VERSION=1.1.1
+VERSION=1.2.0
 
 ZENOHC_DIR=zenoh-c-${VERSION}
 ZENOHC_BUILD_DIR=${ZENOHC_DIR}-build
@@ -23,10 +23,11 @@ cmake \
 cmake --build ${ZENOHC_BUILD_DIR}
 cmake --install ${ZENOHC_BUILD_DIR}
 
-ZENOHCPP_DIR=zenoh-cpp-${VERSION}
+ZENOHCPP_VERSION=2cbffe318d2eb3b632080b9c32f7870ed5158f52
+ZENOHCPP_DIR=zenoh-cpp-${ZENOHCPP_VERSION}
 ZENOHCPP_BUILD_DIR=${ZENOHCPP_DIR}-build
 
-wget https://github.com/eclipse-zenoh/zenoh-cpp/archive/${VERSION}.tar.gz -O zenoh-cpp.tar.gz
+wget https://github.com/eclipse-zenoh/zenoh-cpp/archive/${ZENOHCPP_VERSION}.tar.gz -O zenoh-cpp.tar.gz
 tar -xvf zenoh-cpp.tar.gz
 
 cmake . \
