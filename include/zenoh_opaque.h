@@ -404,13 +404,13 @@ typedef struct ALIGN(8) z_loaned_mutex_t {
  * An owned Zenoh configuration.
  */
 typedef struct ALIGN(8) z_owned_config_t {
-  uint8_t _0[1816];
+  uint8_t _0[1824];
 } z_owned_config_t;
 /**
  * A loaned Zenoh configuration.
  */
 typedef struct ALIGN(8) z_loaned_config_t {
-  uint8_t _0[1816];
+  uint8_t _0[1824];
 } z_loaned_config_t;
 /**
  * A loaned key expression.
