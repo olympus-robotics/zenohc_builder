@@ -1,4 +1,4 @@
-ARG ubuntu:22.04
+ARG BASE_IMAGE=ubuntu:22.04
 
 FROM ${BASE_IMAGE}
 
@@ -41,3 +41,8 @@ ENV RUSTUP_HOME=/usr/local/rustup
 RUN wget -q -O rust_installer.sh https://sh.rustup.rs && chmod +x rust_installer.sh && ./rust_installer.sh -y
 RUN . "$CARGO_HOME/env" && cargo install sccache --locked && echo "export RUSTC_WRAPPER=sccache" >> "$HOME/.bashrc"
 RUN chmod o+rw -R /usr/local/cargo/
+
+SHELL ["/bin/bash", "-l", "-c"]
+
+CMD ["/bin/bash", "-l", "-c", "/workspace/build_zenoh.sh"]
+
