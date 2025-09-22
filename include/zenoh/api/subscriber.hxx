@@ -44,6 +44,7 @@ class SubscriberBase : public Owned<::z_owned_subscriber_t> {
     /// release.
     /// @brief Get the id of the subscriber.
     /// @return id of this subscriber.
+    /// @note Zenoh-c only.
     EntityGlobalId get_id() const {
         return interop::into_copyable_cpp_obj<EntityGlobalId>(::z_subscriber_id(interop::as_loaned_c_ptr(*this)));
     }
@@ -100,8 +101,7 @@ class Subscriber : public detail::SubscriberBase {
     /// @param err if not null, the result code will be written to this location, otherwise ZException exception will be
     /// thrown in case of error.
     Handler undeclare(ZResult* err = nullptr) && {
-        __ZENOH_RESULT_CHECK(::z_undeclare_subscriber(interop::as_moved_c_ptr(*this)), err,
-                             "Failed to undeclare subscriber");
+        __ZENOH_RESULT_CHECK(::z_undeclare_subscriber(::z_move(this->_0)), err, "Failed to undeclare subscriber");
         return std::move(this->_handler);
     }
 

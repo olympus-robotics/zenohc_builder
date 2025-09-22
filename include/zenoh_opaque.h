@@ -113,7 +113,7 @@ typedef enum zc_buf_layout_alloc_status_t {
  * @brief An owned ZShmMut slice.
  */
 typedef struct ALIGN(8) z_owned_shm_mut_t {
-  uint8_t _0[32];
+  uint8_t _0[80];
 } z_owned_shm_mut_t;
 /**
  * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
@@ -145,17 +145,8 @@ typedef struct ALIGN(8) z_owned_alloc_layout_t {
  * @brief A loaned ShmProvider.
  */
 typedef struct ALIGN(8) z_loaned_shm_provider_t {
-  uint8_t _0[240];
+  uint8_t _0[104];
 } z_loaned_shm_provider_t;
-/**
- * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
- * @brief An AllocAlignment.
- */
-#if (defined(Z_FEATURE_SHARED_MEMORY) && defined(Z_FEATURE_UNSTABLE_API))
-typedef struct z_alloc_alignment_t {
-  uint8_t pow;
-} z_alloc_alignment_t;
-#endif
 #if (defined(Z_FEATURE_SHARED_MEMORY) && defined(Z_FEATURE_UNSTABLE_API))
 typedef struct zc_threadsafe_context_data_t {
   void *ptr;
@@ -183,6 +174,15 @@ typedef struct zc_threadsafe_context_t {
 } zc_threadsafe_context_t;
 #endif
 /**
+ * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
+ * @brief An AllocAlignment.
+ */
+#if (defined(Z_FEATURE_SHARED_MEMORY) && defined(Z_FEATURE_UNSTABLE_API))
+typedef struct z_alloc_alignment_t {
+  uint8_t pow;
+} z_alloc_alignment_t;
+#endif
+/**
  * A loaned Zenoh data.
  */
 typedef struct ALIGN(8) z_loaned_bytes_t {
@@ -193,7 +193,7 @@ typedef struct ALIGN(8) z_loaned_bytes_t {
  * @brief A loaned ZShm slice.
  */
 typedef struct ALIGN(8) z_loaned_shm_t {
-  uint8_t _0[32];
+  uint8_t _0[80];
 } z_loaned_shm_t;
 /**
  * A Zenoh data.
@@ -220,7 +220,7 @@ typedef struct ALIGN(8) z_loaned_string_t {
  * @brief An owned ZShm slice.
  */
 typedef struct ALIGN(8) z_owned_shm_t {
-  uint8_t _0[32];
+  uint8_t _0[80];
 } z_owned_shm_t;
 typedef struct ALIGN(8) z_owned_slice_t {
   uint8_t _0[32];
@@ -260,7 +260,7 @@ typedef struct ALIGN(8) z_owned_bytes_writer_t {
  * @brief An owned ChunkAllocResult.
  */
 typedef struct ALIGN(8) z_owned_chunk_alloc_result_t {
-  uint8_t _0[32];
+  uint8_t _0[48];
 } z_owned_chunk_alloc_result_t;
 /**
  * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
@@ -289,12 +289,19 @@ typedef struct z_chunk_descriptor_t {
 #endif
 /**
  * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
+ * @brief A pointer in SHM Segment.
+ */
+typedef struct ALIGN(8) z_owned_ptr_in_segment_t {
+  uint8_t _0[24];
+} z_owned_ptr_in_segment_t;
+/**
+ * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
  * @brief An AllocatedChunk.
  */
 #if (defined(Z_FEATURE_SHARED_MEMORY) && defined(Z_FEATURE_UNSTABLE_API))
 typedef struct z_allocated_chunk_t {
   struct z_chunk_descriptor_t descriptpr;
-  void *data;
+  struct z_moved_ptr_in_segment_t *ptr;
 } z_allocated_chunk_t;
 #endif
 /**
@@ -307,7 +314,7 @@ typedef struct ALIGN(8) z_loaned_session_t {
  * An owned Close handle
  */
 typedef struct ALIGN(8) zc_owned_concurrent_close_handle_t {
-  uint8_t _0[8];
+  uint8_t _0[16];
 } zc_owned_concurrent_close_handle_t;
 /**
  * A loaned hello message.
@@ -319,17 +326,19 @@ typedef struct ALIGN(8) z_loaned_hello_t {
  * Loaned closure.
  */
 typedef struct z_loaned_closure_hello_t {
-  size_t _0[3];
+  size_t _0;
+  size_t _1;
+  size_t _2;
 } z_loaned_closure_hello_t;
 /**
  * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
  * @brief Loaned closure.
  */
-#if defined(Z_FEATURE_UNSTABLE_API)
 typedef struct z_loaned_closure_matching_status_t {
-  size_t _0[3];
+  size_t _0;
+  size_t _1;
+  size_t _2;
 } z_loaned_closure_matching_status_t;
-#endif
 /**
  * A loaned Zenoh query.
  */
@@ -340,7 +349,9 @@ typedef struct ALIGN(8) z_loaned_query_t {
  * Loaned closure.
  */
 typedef struct z_loaned_closure_query_t {
-  size_t _0[3];
+  size_t _0;
+  size_t _1;
+  size_t _2;
 } z_loaned_closure_query_t;
 /**
  * A loaned reply.
@@ -352,7 +363,9 @@ typedef struct ALIGN(8) z_loaned_reply_t {
  * Loaned closure.
  */
 typedef struct z_loaned_closure_reply_t {
-  size_t _0[3];
+  size_t _0;
+  size_t _1;
+  size_t _2;
 } z_loaned_closure_reply_t;
 /**
  * A loaned Zenoh sample.
@@ -364,7 +377,9 @@ typedef struct ALIGN(8) z_loaned_sample_t {
  * Loaned closure.
  */
 typedef struct z_loaned_closure_sample_t {
-  size_t _0[3];
+  size_t _0;
+  size_t _1;
+  size_t _2;
 } z_loaned_closure_sample_t;
 /**
  * @brief A Zenoh ID.
@@ -378,7 +393,9 @@ typedef struct ALIGN(1) z_id_t {
  * @brief Loaned closure.
  */
 typedef struct z_loaned_closure_zid_t {
-  size_t _0[3];
+  size_t _0;
+  size_t _1;
+  size_t _2;
 } z_loaned_closure_zid_t;
 /**
  * An owned conditional variable.
@@ -404,13 +421,13 @@ typedef struct ALIGN(8) z_loaned_mutex_t {
  * An owned Zenoh configuration.
  */
 typedef struct ALIGN(8) z_owned_config_t {
-  uint8_t _0[1824];
+  uint8_t _0[1984];
 } z_owned_config_t;
 /**
  * A loaned Zenoh configuration.
  */
 typedef struct ALIGN(8) z_loaned_config_t {
-  uint8_t _0[1824];
+  uint8_t _0[1984];
 } z_loaned_config_t;
 /**
  * A loaned key expression.
@@ -473,7 +490,7 @@ typedef struct ALIGN(8) z_owned_querier_t {
  * Responds to queries sent via `z_get()` with intersecting key expression.
  */
 typedef struct ALIGN(8) z_owned_queryable_t {
-  uint8_t _0[16];
+  uint8_t _0[48];
 } z_owned_queryable_t;
 /**
  * An owned Zenoh <a href="https://zenoh.io/docs/manual/abstractions/#subscriber"> subscriber </a>.
@@ -595,7 +612,6 @@ typedef struct ALIGN(8) z_owned_liveliness_token_t {
   uint8_t _0[16];
 } z_owned_liveliness_token_t;
 /**
- * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
  * @brief An owned Zenoh matching listener.
  *
  * A listener that sends notifications when the [`MatchingStatus`] of a publisher or querier changes.
@@ -666,7 +682,7 @@ typedef struct ALIGN(8) z_owned_shm_client_storage_t {
  * @brief An owned ShmProvider.
  */
 typedef struct ALIGN(8) z_owned_shm_provider_t {
-  uint8_t _0[240];
+  uint8_t _0[104];
 } z_owned_shm_provider_t;
 /**
  * An owned Zenoh task.
@@ -697,6 +713,13 @@ typedef struct ALIGN(8) z_loaned_shm_client_storage_t {
   uint8_t _0[8];
 } z_loaned_shm_client_storage_t;
 /**
+ * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
+ * @brief A loaned pointer in SHM Segment.
+ */
+typedef struct ALIGN(8) z_loaned_ptr_in_segment_t {
+  uint8_t _0[24];
+} z_loaned_ptr_in_segment_t;
+/**
  * A loaned Zenoh publisher.
  */
 typedef struct ALIGN(8) z_loaned_publisher_t {
@@ -712,7 +735,7 @@ typedef struct ALIGN(8) z_loaned_querier_t {
  * A loaned Zenoh queryable.
  */
 typedef struct ALIGN(8) z_loaned_queryable_t {
-  uint8_t _0[16];
+  uint8_t _0[48];
 } z_loaned_queryable_t;
 /**
  * A loaned Zenoh reply error.
@@ -769,6 +792,15 @@ typedef struct z_shm_segment_t {
 #endif
 /**
  * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
+ * @brief Unique protocol identifier.
+ * Here is a contract: it is up to user to make sure that incompatible ShmClient
+ * and ShmProviderBackend implementations will never use the same ProtocolID.
+ */
+#if (defined(Z_FEATURE_SHARED_MEMORY) && defined(Z_FEATURE_UNSTABLE_API))
+typedef uint32_t z_protocol_id_t;
+#endif
+/**
+ * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
  * @brief Callback for ShmClient.
  */
 #if (defined(Z_FEATURE_SHARED_MEMORY) && defined(Z_FEATURE_UNSTABLE_API))
@@ -777,6 +809,10 @@ typedef struct zc_shm_client_callbacks_t {
    * Attach to particular shared memory segment
    */
   bool (*attach_fn)(struct z_shm_segment_t *out_segment, z_segment_id_t segment_id, void *context);
+  /**
+   * ID of SHM Protocol this client implements
+   */
+  z_protocol_id_t (*id_fn)(void *context);
 } zc_shm_client_callbacks_t;
 #endif
 /**
@@ -791,7 +827,7 @@ typedef struct ALIGN(8) zc_loaned_shm_client_list_t {
  * @brief A loaned ZShmMut slice.
  */
 typedef struct ALIGN(8) z_loaned_shm_mut_t {
-  uint8_t _0[32];
+  uint8_t _0[80];
 } z_loaned_shm_mut_t;
 /**
  * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
@@ -844,6 +880,7 @@ typedef struct zc_shm_provider_backend_callbacks_t {
   size_t (*defragment_fn)(void *context);
   size_t (*available_fn)(void *context);
   void (*layout_for_fn)(struct z_owned_memory_layout_t *layout, void *context);
+  z_protocol_id_t (*id_fn)(void *context);
 } zc_shm_provider_backend_callbacks_t;
 #endif
 /**
@@ -868,7 +905,9 @@ typedef struct ALIGN(8) z_view_keyexpr_t {
  * Loaned closure.
  */
 typedef struct zc_loaned_closure_log_t {
-  size_t _0[3];
+  size_t _0;
+  size_t _1;
+  size_t _2;
 } zc_loaned_closure_log_t;
 /**
  * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
@@ -882,7 +921,7 @@ typedef struct ALIGN(8) zc_owned_shm_client_list_t {
  * @brief A loaned Zenoh advanced publisher.
  */
 typedef struct ALIGN(8) ze_loaned_advanced_publisher_t {
-  uint8_t _0[200];
+  uint8_t _0[232];
 } ze_loaned_advanced_publisher_t;
 /**
  * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
@@ -892,7 +931,7 @@ typedef struct ALIGN(8) ze_loaned_advanced_publisher_t {
  * it also maintains the storage, allowing matching subscribers to retrive missed samples.
  */
 typedef struct ALIGN(8) ze_owned_advanced_publisher_t {
-  uint8_t _0[200];
+  uint8_t _0[232];
 } ze_owned_advanced_publisher_t;
 /**
  * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
@@ -919,7 +958,7 @@ typedef struct ALIGN(8) ze_owned_advanced_subscriber_t {
  * (for example by `ze_owned_querying_subscriber_t`).
  */
 typedef struct ALIGN(8) ze_owned_publication_cache_t {
-  uint8_t _0[96];
+  uint8_t _0[128];
 } ze_owned_publication_cache_t;
 /**
  * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
@@ -943,6 +982,13 @@ typedef struct ALIGN(8) ze_deserializer_t {
 typedef struct ALIGN(8) ze_owned_serializer_t {
   uint8_t _0[64];
 } ze_owned_serializer_t;
+/**
+ * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
+ * @brief A loaned Zenoh publication cache.
+ */
+typedef struct ALIGN(8) ze_loaned_publication_cache_t {
+  uint8_t _0[128];
+} ze_loaned_publication_cache_t;
 /**
  * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
  * @brief A loaned Zenoh querying subscriber.

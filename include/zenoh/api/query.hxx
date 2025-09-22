@@ -110,7 +110,7 @@ class Query : public Owned<::z_owned_query_t> {
         /// @brief The priority of this reply message.
         Priority priority = Z_PRIORITY_DEFAULT;
         /// @brief The congestion control to apply when routing this reply message.
-        CongestionControl congestion_control = Z_CONGESTION_CONTROL_DEFAULT;
+        CongestionControl congestion_control = ::z_internal_congestion_control_default_response();
         /// @brief Whether Zenoh will NOT wait to batch this reply message with others to reduce the bandwith.
         bool is_express = false;
         /// @brief The timestamp of this message.
@@ -190,7 +190,7 @@ class Query : public Owned<::z_owned_query_t> {
         /// @brief The priority of this reply message.
         Priority priority = Z_PRIORITY_DEFAULT;
         /// @brief The congestion control to apply when routing this reply message.
-        CongestionControl congestion_control = Z_CONGESTION_CONTROL_DEFAULT;
+        CongestionControl congestion_control = ::z_internal_congestion_control_default_response();
         /// @brief Whether Zenoh will NOT wait to batch this reply message with others to reduce the bandwith.
         bool is_express = false;
         /// @brief the timestamp of this message.
@@ -199,6 +199,7 @@ class Query : public Owned<::z_owned_query_t> {
         /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
         /// release.
         /// @brief The source info of this reply message.
+        /// @note Zenoh-c only.
         std::optional<SourceInfo> source_info = {};
 #endif
         /// @brief An optional attachment to this reply message.

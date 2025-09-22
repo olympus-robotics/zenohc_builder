@@ -12,7 +12,8 @@
 //   ZettaScale Zenoh Team, <zenoh@zettascale.tech>
 
 #pragma once
-#if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_UNSTABLE_API)
+#if (defined(ZENOHCXX_ZENOHC) || Z_FEATURE_ADVANCED_PUBLICATION == 1 || Z_FEATURE_ADVANCED_SUBSCRIPTION == 1) && \
+    defined(Z_FEATURE_UNSTABLE_API)
 
 #include <algorithm>
 #include <optional>
@@ -34,7 +35,6 @@ namespace zenoh::ext {
 /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
 /// release.
 /// @brief Zenoh Session interface extension.
-/// @note Zenoh-c only.
 class SessionExt {
     const zenoh::Session& _session;
 
@@ -47,11 +47,12 @@ class SessionExt {
 
     /// @name Methods
 
+#if defined(ZENOHCXX_ZENOHC)
     /// @warning This API is deprecated. Please use zenoh::ext::AdvancedPublisher.
     /// @brief Options passed to the ``SessionExt::declare_publication_cache``.
     struct PublicationCacheOptions {
-        /// The prefix used for queryable.
-        std::optional<KeyExpr> queryable_prefix = {};
+        /// The suffix used for queryable.
+        std::optional<KeyExpr> queryable_suffix = {};
 #if defined(Z_FEATURE_UNSTABLE_API)
         /// The restriction for the matching queries that will be receive by this publication cache.
         Locality queryable_origin = ::zc_locality_default();
@@ -73,7 +74,7 @@ class SessionExt {
         ::ze_publication_cache_options_t to_c_opts() {
             ::ze_publication_cache_options_t opts;
             ze_publication_cache_options_default(&opts);
-            opts.queryable_prefix = zenoh::interop::as_loaned_c_ptr(this->queryable_prefix);
+            opts.queryable_suffix = zenoh::interop::as_loaned_c_ptr(this->queryable_suffix);
 #if defined(Z_FEATURE_UNSTABLE_API)
             opts.queryable_origin = this->queryable_origin;
 #endif
@@ -128,9 +129,9 @@ class SessionExt {
 
         /// The key expression to be used for queries.
         std::optional<KeyExpr> query_keyexpr = {};
-#if defined(Z_FEATURE_UNSTABLE_API)
         /// The restriction for the matching publications that will be received by this publication cache.
         zenoh::Locality allowed_origin = ::zc_locality_default();
+#if defined(Z_FEATURE_UNSTABLE_API)
         /// The accepted replies for queries.
         zenoh::ReplyKeyExpr query_accept_replies = ::zc_reply_keyexpr_default();
 #endif
@@ -153,8 +154,8 @@ class SessionExt {
             ::ze_querying_subscriber_options_t opts;
             ze_querying_subscriber_options_default(&opts);
             opts.query_selector = zenoh::interop::as_loaned_c_ptr(this->query_keyexpr);
-#if defined(Z_FEATURE_UNSTABLE_API)
             opts.allowed_origin = this->allowed_origin;
+#if defined(Z_FEATURE_UNSTABLE_API)
             opts.query_accept_replies = this->query_accept_replies;
 #endif
             opts.query_target = this->query_target;
@@ -260,13 +261,13 @@ class SessionExt {
         return QueryingSubscriber<typename Channel::template HandlerType<zenoh::Sample>>(
             std::move(qs), std::move(cb_handler_pair.second));
     }
+#endif
 
+#if defined(ZENOHCXX_ZENOHC) || Z_FEATURE_ADVANCED_PUBLICATION == 1
     /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
     /// release.
     /// Options passed to the `SessionExt::declare_advanced_publisher()` function.
     struct AdvancedPublisherOptions {
-        /// @name Fields
-
         /// @brief  Setting for advanced publisher's cache. The cache allows advanced subscribers to recover history
         /// and/or lost samples.
         struct CacheOptions {
@@ -275,7 +276,7 @@ class SessionExt {
             /// Number of samples to keep for each resource.
             size_t max_samples = 1;
             /// The congestion control to apply to replies.
-            zenoh::CongestionControl congestion_control = Z_CONGESTION_CONTROL_DEFAULT;
+            zenoh::CongestionControl congestion_control = ::z_internal_congestion_control_default_response();
             /// The priority of replies.
             zenoh::Priority priority = ::z_priority_default();
             /// If set to ``true``, this cache replies will not be batched. This usually has a positive impact on
@@ -290,14 +291,39 @@ class SessionExt {
 
         /// @brief Settings allowing matching Subscribers to detect lost samples and optionally ask for retransimission.
         struct SampleMissDetectionOptions {
-            /// The period of publisher heartbeats in ms, which can be used by ``AdvancedSubscriber`` for missed sample
-            /// detection (if heartbeat-based recovery is enabled).
-            /// Otherwise, missed samples will be retransmitted based on Advanced Subscriber queries.
-            std::optional<uint64_t> heartbeat_period_ms = {};
+            /// @brief Disable last sample miss detection through heartbeat.
+            struct HeartbeatNone {};
+
+            /// @brief Allow last sample miss detection through periodic heartbeat.
+            /// Periodically send the last published Sample's sequence number to allow last sample
+            /// miss detection.
+            struct HeartbeatPeriodic {
+                /// @name Fields
+                /// @brief The period of publisher periodic heartbeats in ms.
+                uint64_t period_ms;
+            };
+
+            /// @brief Allow last sample miss detection through sporadic heartbeat.
+            /// Each period, the last published Sample's sequence number is sent with `z_congestion_control_t::BLOCK`
+            /// but only if it changed since last period.
+            struct HeartbeatSporadic {
+                /// @name Fields
+                /// @brief The period of publisher sporadic heartbeats in ms.
+                uint64_t period_ms;
+            };
+
+            /// @name Fields
+
+            /// Configure last sample miss detection through sporadic or periodic heartbeat.
+            std::variant<HeartbeatNone, HeartbeatPeriodic, HeartbeatSporadic> heartbeat = HeartbeatNone{};
+
+            /// @name Methods
 
             /// @brief Create default option settings.
             static SampleMissDetectionOptions create_default() { return {}; }
         };
+
+        /// @name Fields
 
         /// Base publisher options.
         zenoh::Session::PublisherOptions publisher_options = {};
@@ -334,12 +360,23 @@ class SessionExt {
             opts.publisher_detection = this->publisher_detection;
             if (this->sample_miss_detection.has_value()) {
                 opts.sample_miss_detection.is_enabled = true;
-                if (this->sample_miss_detection->heartbeat_period_ms.has_value()) {
-                    // treat 0 as very small delay
+                if (std::holds_alternative<SampleMissDetectionOptions::HeartbeatPeriodic>(
+                        this->sample_miss_detection->heartbeat)) {
+                    opts.sample_miss_detection.heartbeat_mode =
+                        ::ze_advanced_publisher_heartbeat_mode_t::ZE_ADVANCED_PUBLISHER_HEARTBEAT_MODE_PERIODIC;
                     opts.sample_miss_detection.heartbeat_period_ms =
-                        std::max<uint64_t>(1, this->sample_miss_detection->heartbeat_period_ms.value());
+                        std::get<SampleMissDetectionOptions::HeartbeatPeriodic>(this->sample_miss_detection->heartbeat)
+                            .period_ms;
+                } else if (std::holds_alternative<SampleMissDetectionOptions::HeartbeatSporadic>(
+                               this->sample_miss_detection->heartbeat)) {
+                    opts.sample_miss_detection.heartbeat_mode =
+                        ::ze_advanced_publisher_heartbeat_mode_t::ZE_ADVANCED_PUBLISHER_HEARTBEAT_MODE_SPORADIC;
+                    opts.sample_miss_detection.heartbeat_period_ms =
+                        std::get<SampleMissDetectionOptions::HeartbeatSporadic>(this->sample_miss_detection->heartbeat)
+                            .period_ms;
                 } else {
-                    opts.sample_miss_detection.heartbeat_period_ms = 0;
+                    opts.sample_miss_detection.heartbeat_mode =
+                        ::ze_advanced_publisher_heartbeat_mode_t::ZE_ADVANCED_PUBLISHER_HEARTBEAT_MODE_NONE;
                 }
             }
             opts.publisher_detection_metadata = zenoh::interop::as_loaned_c_ptr(this->publisher_detection_metadata);
@@ -365,7 +402,8 @@ class SessionExt {
         __ZENOH_RESULT_CHECK(res, err, "Failed to declare Advanced Publisher");
         return p;
     }
-
+#endif
+#if defined(ZENOHCXX_ZENOHC) || Z_FEATURE_ADVANCED_SUBSCRIPTION == 1
     /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
     /// release.
     /// @brief Options passed to the ``SessionExt::declare_advanced_subscriber``.
@@ -577,9 +615,10 @@ class SessionExt {
             zenoh::interop::as_loaned_c_ptr(key_expr), ::z_move(cb_handler_pair.first), &opts);
         __ZENOH_RESULT_CHECK(res, err, "Failed to declare Advanced Subscriber");
         if (res != Z_OK) ::z_drop(zenoh::interop::as_moved_c_ptr(cb_handler_pair.second));
-        return Subscriber<typename Channel::template HandlerType<Sample>>(std::move(s),
-                                                                          std::move(cb_handler_pair.second));
+        return AdvancedSubscriber<typename Channel::template HandlerType<Sample>>(std::move(s),
+                                                                                  std::move(cb_handler_pair.second));
     }
+#endif
 };
 }  // namespace zenoh::ext
 

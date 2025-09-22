@@ -18,6 +18,7 @@
 #include <stdexcept>
 #include <string>
 
+#include "../detail/availability_checks.hxx"
 #include "../zenohc.hxx"
 
 namespace zenoh {
@@ -35,10 +36,10 @@ class ZException : public std::runtime_error {
 
 #define __ZENOH_RESULT_CHECK(err, err_ptr, message)        \
     if (err_ptr == nullptr) {                              \
-        ZResult __ze = err;                                \
+        ZResult __ze = static_cast<ZResult>(err);          \
         if (__ze != Z_OK) throw ZException(message, __ze); \
     } else {                                               \
-        *err_ptr = err;                                    \
+        *err_ptr = static_cast<ZResult>(err);              \
     }
 
 //
@@ -67,13 +68,20 @@ class Owned {
 
    protected:
     /// Move constructor.
-    Owned(Owned&& v) : Owned(&v._0) {}
+    Owned(Owned&& v) : Owned(nullptr) { *this = std::move(v); }
     /// Move assignment.
     Owned& operator=(Owned&& v) {
         if (this != &v) {
             ::z_drop(::z_move(this->_0));
-            _0 = v._0;
-            ::z_internal_null(&v._0);
+            if constexpr (detail::is_take_from_loaned_available_v<OwnedType>) {
+                if (::z_internal_check(v._0)) {
+                    ::z_take_from_loaned(&this->_0, ::z_loan_mut(v._0));
+                } else {
+                    ::z_internal_null(&this->_0);
+                }
+            } else {
+                z_take(&this->_0, ::z_move(v._0));
+            }
         }
         return *this;
     }
@@ -84,16 +92,11 @@ class Owned {
 
     explicit Owned(OwnedType* pv) {
         if (pv != nullptr) {
-            _0 = *pv;
-            ::z_internal_null(pv);
-        } else
+            z_take(&this->_0, ::z_move(*pv));
+        } else {
             ::z_internal_null(&this->_0);
+        }
     }
 };
-
-namespace detail {
-struct null_object_t {};
-inline constexpr null_object_t null_object{};
-}  // namespace detail
 
 }  // namespace zenoh

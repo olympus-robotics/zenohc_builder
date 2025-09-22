@@ -1,7 +1,7 @@
-prefix=/workspaces/zenohc_builder
+prefix=/workspace
 
 Name: zenohcxx
 Description: C++ bindings for Zenoh
 URL: https://github.com/eclipse-zenoh/zenoh-cpp
-Version: 1.2.1
+Version: 1.5.1
 Cflags: -I${prefix}/include

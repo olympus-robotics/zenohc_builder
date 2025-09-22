@@ -19,6 +19,11 @@
 
 #include "base.hxx"
 #include "interop.hxx"
+#include "keyexpr.hxx"
+
+#if defined(Z_FEATURE_UNSTABLE_API)
+#include "source_info.hxx"
+#endif
 
 namespace zenoh {
 
@@ -29,6 +34,22 @@ class QueryableBase : public Owned<::z_owned_queryable_t> {
     QueryableBase(zenoh::detail::null_object_t) : Owned(nullptr){};
     QueryableBase(::z_owned_queryable_t* q) : Owned(q){};
     friend class zenoh::Session;
+
+   public:
+    /// @brief Get the key expression of the queryable.
+    const KeyExpr& get_keyexpr() const {
+        return interop::as_owned_cpp_ref<KeyExpr>(::z_queryable_keyexpr(interop::as_loaned_c_ptr(*this)));
+    }
+
+#if defined(Z_FEATURE_UNSTABLE_API)
+    /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
+    /// release.
+    /// @brief Get the id of the queryable.
+    /// @return id of this queryable.
+    EntityGlobalId get_id() const {
+        return interop::into_copyable_cpp_obj<EntityGlobalId>(::z_queryable_id(interop::as_loaned_c_ptr(*this)));
+    }
+#endif
 };
 }  // namespace detail
 
@@ -82,8 +103,7 @@ class Queryable : public detail::QueryableBase {
     /// @param err if not null, the result code will be written to this location, otherwise ZException exception will be
     /// thrown in case of error.
     Handler undeclare(ZResult* err = nullptr) && {
-        __ZENOH_RESULT_CHECK(::z_undeclare_queryable(interop::as_moved_c_ptr(*this)), err,
-                             "Failed to undeclare queryable");
+        __ZENOH_RESULT_CHECK(::z_undeclare_queryable(::z_move(this->_0)), err, "Failed to undeclare queryable");
         return std::move(this->_handler);
     }
 

@@ -46,7 +46,6 @@ if(NOT TARGET __zenohc_shared)
     add_library(__zenohc_shared SHARED IMPORTED GLOBAL)
     add_library(zenohc::shared ALIAS __zenohc_shared)
     set_target_properties(__zenohc_shared PROPERTIES
-        IMPORTED_NO_SONAME TRUE
         INTERFACE_COMPILE_DEFINITION ZENOHC_DYN_LIB
         IMPORTED_LOCATION "${PACKAGE_PREFIX_DIR}/lib/libzenohc.so"
         INTERFACE_INCLUDE_DIRECTORIES "${PACKAGE_PREFIX_DIR}/include"
@@ -72,4 +71,3 @@ if(NOT TARGET zenohc::lib)
         add_library(zenohc::lib ALIAS __zenohc_static)
     endif()
 endif()
-

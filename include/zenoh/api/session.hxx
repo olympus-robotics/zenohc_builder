@@ -30,7 +30,7 @@
 #include "queryable.hxx"
 #include "subscriber.hxx"
 #include "timestamp.hxx"
-#if (defined(ZENOHCXX_ZENOHC) || Z_FEATURE_QUERY == 1) && defined(Z_FEATURE_UNSTABLE_API)
+#if (defined(ZENOHCXX_ZENOHC) || Z_FEATURE_QUERY == 1)
 #include "querier.hxx"
 #endif
 #if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_SHARED_MEMORY) && defined(Z_FEATURE_UNSTABLE_API)
@@ -52,9 +52,10 @@ class Session : public Owned<::z_owned_session_t> {
         /// @name Fields
 #ifdef ZENOHCXX_ZENOHPICO
         /// @brief If ``true``, start background threads which handle the network
-        /// traffic. If false, the threads should be called manually with ``Session::start_read_task`` and
-        /// ``Session::start_lease_task`` or methods ``Session::read``, ``Session::send_keep_alive`` and
-        /// ``Session::send_join`` should be called in loop.
+        /// traffic. If false, the threads should be called manually with ``Session::start_read_task``,
+        /// ``Session::start_lease_task`` and ``Session::start_periodic_scheduler_task``
+        /// or methods ``Session::read``, ``Session::send_keep_alive``,
+        /// ``Session::send_join`` and ``Session::process_periodic_tasks`` should be called in loop.
         /// @note Zenoh-pico only.
         bool start_background_tasks = true;
 #endif
@@ -86,6 +87,11 @@ class Session : public Owned<::z_owned_session_t> {
             if (err_inner == Z_OK) {
                 this->start_lease_task(&err_inner);
             }
+#if defined(Z_FEATURE_UNSTABLE_API) && Z_FEATURE_PERIODIC_TASKS == 1
+            if (err_inner == Z_OK) {
+                this->start_periodic_scheduler_task(&err_inner);
+            }
+#endif
             if (err_inner == Z_OK) return;
             ::z_drop(::z_move(this->_0));
             __ZENOH_RESULT_CHECK(err_inner, err, "Failed to start background tasks");
@@ -177,7 +183,7 @@ class Session : public Owned<::z_owned_session_t> {
         /// @brief The priority of the get message.
         Priority priority = Z_PRIORITY_DEFAULT;
         /// @brief The congestion control to apply when routing get message.
-        CongestionControl congestion_control = Z_CONGESTION_CONTROL_DEFAULT;
+        CongestionControl congestion_control = ::z_internal_congestion_control_default_request();
         /// @brief Whether Zenoh will NOT wait to batch get message with others to reduce the bandwith.
         bool is_express = false;
         /// @brief An optional payload of the query.
@@ -188,6 +194,7 @@ class Session : public Owned<::z_owned_session_t> {
         /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
         /// release.
         /// @brief The source info for the query.
+        /// @note Zenoh-c only.
         std::optional<SourceInfo> source_info = {};
 
         /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
@@ -196,9 +203,9 @@ class Session : public Owned<::z_owned_session_t> {
         /// @brief The accepted replies for the query.
         /// @note Zenoh-c only.
         ReplyKeyExpr accept_replies = ::zc_reply_keyexpr_default();
+#endif
 
-        /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
-        /// release.
+#if defined(ZENOHCXX_ZENOHC)
         /// @brief Allowed destination.
         /// @note Zenoh-c only.
         Locality allowed_destination = ::zc_locality_default();
@@ -213,6 +220,32 @@ class Session : public Owned<::z_owned_session_t> {
 
         /// @brief Create default option settings.
         static GetOptions create_default() { return {}; }
+
+       private:
+        friend struct interop::detail::Converter;
+        ::z_get_options_t to_c_opts() {
+            ::z_get_options_t opts;
+            z_get_options_default(&opts);
+            opts.target = this->target;
+            opts.consolidation = *interop::as_copyable_c_ptr(this->consolidation);
+            opts.congestion_control = this->congestion_control;
+            opts.priority = this->priority;
+            opts.is_express = this->is_express;
+            opts.payload = interop::as_moved_c_ptr(this->payload);
+            opts.encoding = interop::as_moved_c_ptr(this->encoding);
+#if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_UNSTABLE_API)
+            opts.source_info = interop::as_moved_c_ptr(this->source_info);
+#endif
+#if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_UNSTABLE_API)
+            opts.accept_replies = this->accept_replies;
+#endif
+#if defined(ZENOHCXX_ZENOHC)
+            opts.allowed_destination = this->allowed_destination;
+#endif
+            opts.attachment = interop::as_moved_c_ptr(this->attachment);
+            opts.timeout_ms = this->timeout_ms;
+            return opts;
+        }
     };
 
     /// @brief Query data from the matching queryables in the system. Replies are provided through a callback function.
@@ -236,22 +269,7 @@ class Session : public Owned<::z_owned_session_t> {
         using ClosureType = typename detail::closures::Closure<Cval, Dval, void, Reply&>;
         auto closure = ClosureType::into_context(std::forward<C>(on_reply), std::forward<D>(on_drop));
         ::z_closure(&c_closure, detail::closures::_zenoh_on_reply_call, detail::closures::_zenoh_on_drop, closure);
-        ::z_get_options_t opts;
-        z_get_options_default(&opts);
-        opts.target = options.target;
-        opts.consolidation = *interop::as_copyable_c_ptr(options.consolidation);
-        opts.congestion_control = options.congestion_control;
-        opts.priority = options.priority;
-        opts.is_express = options.is_express;
-        opts.payload = interop::as_moved_c_ptr(options.payload);
-        opts.encoding = interop::as_moved_c_ptr(options.encoding);
-#if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_UNSTABLE_API)
-        opts.source_info = interop::as_moved_c_ptr(options.source_info);
-        opts.accept_replies = options.accept_replies;
-        opts.allowed_destination = options.allowed_destination;
-#endif
-        opts.attachment = interop::as_moved_c_ptr(options.attachment);
-        opts.timeout_ms = options.timeout_ms;
+        ::z_get_options_t opts = interop::detail::Converter::to_c_opts(options);
 
         __ZENOH_RESULT_CHECK(::z_get(interop::as_loaned_c_ptr(*this), interop::as_loaned_c_ptr(key_expr),
                                      parameters.c_str(), ::z_move(c_closure), &opts),
@@ -274,22 +292,7 @@ class Session : public Owned<::z_owned_session_t> {
                                                       GetOptions&& options = GetOptions::create_default(),
                                                       ZResult* err = nullptr) const {
         auto cb_handler_pair = channel.template into_cb_handler_pair<Reply>();
-        ::z_get_options_t opts;
-        z_get_options_default(&opts);
-        opts.target = options.target;
-        opts.consolidation = *interop::as_copyable_c_ptr(options.consolidation);
-        opts.congestion_control = options.congestion_control;
-        opts.priority = options.priority;
-        opts.is_express = options.is_express;
-        opts.payload = interop::as_moved_c_ptr(options.payload);
-        opts.encoding = interop::as_moved_c_ptr(options.encoding);
-#if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_UNSTABLE_API)
-        opts.source_info = interop::as_moved_c_ptr(options.source_info);
-        opts.accept_replies = options.accept_replies;
-        opts.allowed_destination = options.allowed_destination;
-#endif
-        opts.attachment = interop::as_moved_c_ptr(options.attachment);
-        opts.timeout_ms = options.timeout_ms;
+        ::z_get_options_t opts = interop::detail::Converter::to_c_opts(options);
 
         ZResult res = ::z_get(interop::as_loaned_c_ptr(*this), interop::as_loaned_c_ptr(key_expr), parameters.c_str(),
                               ::z_move(cb_handler_pair.first), &opts);
@@ -306,10 +309,28 @@ class Session : public Owned<::z_owned_session_t> {
         /// @brief The completeness of the Queryable.
         bool complete = false;
 
+#if defined(ZENOHCXX_ZENOHC)
+        /// Restrict the matching requests that will be received by this Queryable to the ones
+        /// that have the compatible allowed_destination.
+        /// @note Zenoh-c only.
+        Locality allowed_origin = ::zc_locality_default();
+#endif
         /// @name Methods
 
         /// @brief Create default option settings.
         static QueryableOptions create_default() { return {}; }
+
+       private:
+        friend struct interop::detail::Converter;
+        ::z_queryable_options_t to_c_opts() {
+            ::z_queryable_options_t opts;
+            z_queryable_options_default(&opts);
+            opts.complete = this->complete;
+#if defined(ZENOHCXX_ZENOHC)
+            opts.allowed_origin = this->allowed_origin;
+#endif
+            return opts;
+        }
     };
 
     /// @brief Create a ``Queryable`` object to answer to ``Session::get`` requests.
@@ -334,9 +355,7 @@ class Session : public Owned<::z_owned_session_t> {
         using ClosureType = typename detail::closures::Closure<Cval, Dval, void, Query&>;
         auto closure = ClosureType::into_context(std::forward<C>(on_query), std::forward<D>(on_drop));
         ::z_closure(&c_closure, detail::closures::_zenoh_on_query_call, detail::closures::_zenoh_on_drop, closure);
-        ::z_queryable_options_t opts;
-        z_queryable_options_default(&opts);
-        opts.complete = options.complete;
+        ::z_queryable_options_t opts = interop::detail::Converter::to_c_opts(options);
 
         Queryable<void> q(zenoh::detail::null_object);
         ZResult res = ::z_declare_queryable(interop::as_loaned_c_ptr(*this), interop::as_owned_c_ptr(q),
@@ -367,9 +386,7 @@ class Session : public Owned<::z_owned_session_t> {
         using ClosureType = typename detail::closures::Closure<Cval, Dval, void, Query&>;
         auto closure = ClosureType::into_context(std::forward<C>(on_query), std::forward<D>(on_drop));
         ::z_closure(&c_closure, detail::closures::_zenoh_on_query_call, detail::closures::_zenoh_on_drop, closure);
-        ::z_queryable_options_t opts;
-        z_queryable_options_default(&opts);
-        opts.complete = options.complete;
+        ::z_queryable_options_t opts = interop::detail::Converter::to_c_opts(options);
 
         ZResult res = ::z_declare_background_queryable(interop::as_loaned_c_ptr(*this),
                                                        interop::as_loaned_c_ptr(key_expr), ::z_move(c_closure), &opts);
@@ -390,9 +407,7 @@ class Session : public Owned<::z_owned_session_t> {
         const KeyExpr& key_expr, Channel channel, QueryableOptions&& options = QueryableOptions::create_default(),
         ZResult* err = nullptr) const {
         auto cb_handler_pair = channel.template into_cb_handler_pair<Query>();
-        ::z_queryable_options_t opts;
-        z_queryable_options_default(&opts);
-        opts.complete = options.complete;
+        ::z_queryable_options_t opts = interop::detail::Converter::to_c_opts(options);
 
         Queryable<void> q(zenoh::detail::null_object);
         ZResult res = ::z_declare_queryable(interop::as_loaned_c_ptr(*this), interop::as_owned_c_ptr(q),
@@ -406,11 +421,11 @@ class Session : public Owned<::z_owned_session_t> {
 #if defined(ZENOHCXX_ZENOHC) || Z_FEATURE_SUBSCRIPTION == 1
     /// @brief Options to be passed when declaring a ``Subscriber``.
     struct SubscriberOptions {
-/// @name Fields
-
-/// Restrict the matching publications that will be received by this Subscribers to the ones
-/// that have the compatible allowed_destination.
-#if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_UNSTABLE_API)
+        /// @name Fields
+#if defined(ZENOHCXX_ZENOHC)
+        /// Restrict the matching publications that will be received by this Subscribers to the ones
+        /// that have the compatible allowed_destination.
+        /// @note Zenoh-c only.
         Locality allowed_origin = ::zc_locality_default();
 #endif
         /// @name Methods
@@ -423,7 +438,7 @@ class Session : public Owned<::z_owned_session_t> {
         ::z_subscriber_options_t to_c_opts() {
             ::z_subscriber_options_t opts;
             z_subscriber_options_default(&opts);
-#if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_UNSTABLE_API)
+#if defined(ZENOHCXX_ZENOHC)
             opts.allowed_origin = this->allowed_origin;
 #endif
             return opts;
@@ -526,7 +541,7 @@ class Session : public Owned<::z_owned_session_t> {
         /// @brief The priority of the delete message.
         Priority priority = Z_PRIORITY_DEFAULT;
         /// @brief The congestion control to apply when routing delete message.
-        CongestionControl congestion_control = Z_CONGESTION_CONTROL_DEFAULT;
+        CongestionControl congestion_control = ::z_internal_congestion_control_default_push();
         /// @brief Whether Zenoh will NOT wait to batch delete message with others to reduce the bandwith.
         bool is_express = false;
 #if defined(Z_FEATURE_UNSTABLE_API)
@@ -571,12 +586,10 @@ class Session : public Owned<::z_owned_session_t> {
         /// @brief The priority of this message.
         Priority priority = Z_PRIORITY_DEFAULT;
         /// @brief The congestion control to apply when routing this message.
-        CongestionControl congestion_control = Z_CONGESTION_CONTROL_DEFAULT;
+        CongestionControl congestion_control = ::z_internal_congestion_control_default_push();
         /// @brief Whether Zenoh will NOT wait to batch this message with others to reduce the bandwith.
         bool is_express = false;
-#if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_UNSTABLE_API)
-        /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
-        /// release.
+#if defined(ZENOHCXX_ZENOHC)
         /// @brief Allowed destination.
         /// @note Zenoh-c only.
         Locality allowed_destination = ::zc_locality_default();
@@ -591,11 +604,10 @@ class Session : public Owned<::z_owned_session_t> {
         /// @brief The put operation reliability.
         Reliability reliability = z_reliability_default();
 #endif
-#if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_UNSTABLE_API)
+#if defined(Z_FEATURE_UNSTABLE_API)
         /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
         /// release.
         /// @brief The source info of this message.
-        /// @note Zenoh-c only.
         std::optional<SourceInfo> source_info = {};
 #endif
         /// @brief An optional attachment to the message.
@@ -623,10 +635,10 @@ class Session : public Owned<::z_owned_session_t> {
         opts.is_express = options.is_express;
 #if defined(Z_FEATURE_UNSTABLE_API)
         opts.reliability = options.reliability;
-#endif
-#if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_UNSTABLE_API)
-        opts.allowed_destination = options.allowed_destination;
         opts.source_info = interop::as_moved_c_ptr(options.source_info);
+#endif
+#if defined(ZENOHCXX_ZENOHC)
+        opts.allowed_destination = options.allowed_destination;
 #endif
         opts.attachment = interop::as_moved_c_ptr(options.attachment);
         opts.timestamp = interop::as_copyable_c_ptr(options.timestamp);
@@ -640,7 +652,7 @@ class Session : public Owned<::z_owned_session_t> {
         /// @name Fields
 
         /// @brief The congestion control to apply when routing messages from this publisher.
-        CongestionControl congestion_control = Z_CONGESTION_CONTROL_DEFAULT;
+        CongestionControl congestion_control = ::z_internal_congestion_control_default_push();
         /// @brief The priority of messages from this publisher.
         Priority priority = Z_PRIORITY_DEFAULT;
         /// @brief If ``true``, Zenoh will not wait to batch this message with others to reduce the bandwith.
@@ -651,9 +663,7 @@ class Session : public Owned<::z_owned_session_t> {
         /// @brief The publisher reliability.
         Reliability reliability = z_reliability_default();
 #endif
-#if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_UNSTABLE_API)
-        /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
-        /// release.
+#if defined(ZENOHCXX_ZENOHC)
         /// @brief Allowed destination.
         /// @note Zenoh-c only.
         Locality allowed_destination = ::zc_locality_default();
@@ -677,7 +687,7 @@ class Session : public Owned<::z_owned_session_t> {
 #if defined(Z_FEATURE_UNSTABLE_API)
             opts.reliability = this->reliability;
 #endif
-#if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_UNSTABLE_API)
+#if defined(ZENOHCXX_ZENOHC)
             opts.allowed_destination = this->allowed_destination;
 #endif
             opts.encoding = interop::as_moved_c_ptr(this->encoding);
@@ -703,9 +713,7 @@ class Session : public Owned<::z_owned_session_t> {
     }
 #endif
 
-#if (defined(ZENOHCXX_ZENOHC) || Z_FEATURE_QUERY == 1) && defined(Z_FEATURE_UNSTABLE_API)
-    /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
-    /// release.
+#if (defined(ZENOHCXX_ZENOHC) || Z_FEATURE_QUERY == 1)
     /// @brief Options to be passed when declaring a ``Querier``.
     struct QuerierOptions {
         /// @name Fields
@@ -717,7 +725,7 @@ class Session : public Owned<::z_owned_session_t> {
         /// @brief The priority of the querier queries.
         Priority priority = Z_PRIORITY_DEFAULT;
         /// @brief The congestion control to apply when routing querier queries.
-        CongestionControl congestion_control = Z_CONGESTION_CONTROL_DEFAULT;
+        CongestionControl congestion_control = ::z_internal_congestion_control_default_request();
         /// @brief Whether Zenoh will NOT wait to batch querier queries with other messages to reduce the bandwith.
         bool is_express = false;
 #if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_UNSTABLE_API)
@@ -727,9 +735,8 @@ class Session : public Owned<::z_owned_session_t> {
         /// @brief The accepted replies for the querier queries.
         /// @note Zenoh-c only.
         ReplyKeyExpr accept_replies = ::zc_reply_keyexpr_default();
-
-        /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
-        /// release.
+#endif
+#if defined(ZENOHCXX_ZENOHC)
         /// @brief Allowed destination for querier queries.
         /// @note Zenoh-c only.
         Locality allowed_destination = ::zc_locality_default();
@@ -745,8 +752,6 @@ class Session : public Owned<::z_owned_session_t> {
         static QuerierOptions create_default() { return {}; }
     };
 
-    /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
-    /// release.
     /// @brief Create a ``Querier`` object to send queries to matching ``Queryable`` objects.
     /// @param key_expr the key expression to match the queryables.
     /// @param options options passed to querier declaration.
@@ -765,6 +770,8 @@ class Session : public Owned<::z_owned_session_t> {
         ;
 #if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_UNSTABLE_API)
         opts.accept_replies = options.accept_replies;
+#endif
+#if defined(ZENOHCXX_ZENOHC)
         opts.allowed_destination = options.allowed_destination;
 #endif
         opts.timeout_ms = options.timeout_ms;
@@ -847,6 +854,34 @@ class Session : public Owned<::z_owned_session_t> {
         __ZENOH_RESULT_CHECK(zp_stop_lease_task(interop::as_loaned_c_ptr(*this)), err, "Failed to stop lease task");
     }
 
+#if defined(Z_FEATURE_UNSTABLE_API) && Z_FEATURE_PERIODIC_TASKS == 1
+    /// @brief Start the periodic scheduler task.  The periodic scheduler task executes registered periodic jobs
+    /// according to their configured intervals. Jobs are added and removed via the scheduler API.
+    /// @param err if not null, the result code will be written to this location, otherwise ZException exception will be
+    /// thrown in case of error.
+    /// @note Zenoh-pico only.
+    void start_periodic_scheduler_task(ZResult* err = nullptr) {
+        __ZENOH_RESULT_CHECK(zp_start_periodic_scheduler_task(interop::as_loaned_c_ptr(*this), NULL), err,
+                             "Failed to start periodic scheduler task");
+    }
+
+    /// @brief Stop the periodic scheduler task.
+    /// @param err if not null, the result code will be written to this location, otherwise ZException exception will be
+    /// thrown in case of error.
+    /// @note Zenoh-pico only.
+    void stop_periodic_scheduler_task(ZResult* err = nullptr) {
+        __ZENOH_RESULT_CHECK(zp_stop_periodic_scheduler_task(interop::as_loaned_c_ptr(*this)), err,
+                             "Failed to stop periodic scheduler task");
+    }
+
+    /// @brief Process outstanding periodic tasks.
+    /// @param err if not null, the result code will be written to this location, otherwise ZException exception will be
+    /// thrown in case of error.
+    void process_periodic_tasks(ZResult* err = nullptr) {
+        __ZENOH_RESULT_CHECK(zp_process_periodic_tasks(interop::as_loaned_c_ptr(*this)), err,
+                             "Failed to process periodic tasks");
+    }
+#endif
     /// @brief Triggers a single execution of reading procedure from the network and processes of any received the
     /// message.
     /// @param err if not null, the result code will be written to this location, otherwise ZException exception will be
@@ -1129,6 +1164,64 @@ class Session : public Owned<::z_owned_session_t> {
     Ext ext() const {
         return Ext(*this);
     }
+#endif
+
+#if defined(ZENOHCXX_ZENOHPICO) && Z_FEATURE_BATCHING == 1
+    /// @brief A RAII-style batch guard. Until it goes out of scope, any message that would have been sent on the
+    /// network by subsequent api calls will be instead stored until the batch is full, or ``BatchGuard::flush`` is
+    /// called.
+    ///
+    /// When the guard goes out of scope, all the messages remaining in the batch are automatically flushed.
+    /// @note Zenoh-pico only.
+    class BatchGuard {
+        friend class Session;
+
+        z_owned_session_t session;
+        BatchGuard(const Session& s) { this->session._rc = _z_session_rc_clone(interop::as_loaned_c_ptr(s)); }
+
+        BatchGuard() { z_internal_null(&this->session); }
+
+        BatchGuard(const BatchGuard&) = delete;
+        BatchGuard& operator=(const BatchGuard&) = delete;
+
+       public:
+        BatchGuard(BatchGuard&&) = default;
+        BatchGuard& operator=(BatchGuard&&) = default;
+
+        /// @name Methods
+
+        /// @brief Send the currently batched messages on the network.
+        /// @param err if not null, the result code will be written to this location, otherwise ZException exception
+        /// will be thrown in case of error.
+        void flush(ZResult* err = nullptr) const {
+            __ZENOH_RESULT_CHECK(z_internal_check(this->session) ? Z_OK : Z_EINVAL, err, "Batch guard is invalid");
+            if (err == nullptr || *err == Z_OK) {
+                __ZENOH_RESULT_CHECK(::zp_batch_flush(z_loan(this->session)), err, "Failed to flush the batch");
+            }
+        }
+
+        ~BatchGuard() {
+            if (z_internal_check(this->session)) {
+                zp_batch_stop(z_loan(this->session));
+                z_drop(z_move(this->session));
+            }
+        }
+    };
+
+    /// @brief Activate the batching mechanism.
+    /// @param err if not null, the result code will be written to this location, otherwise ZException exception will be
+    /// thrown in case of error.
+    /// @return A RAII-style batch guard.
+    /// @note Zenoh-pico only.
+    [[nodiscard]] BatchGuard start_batching(ZResult* err = nullptr) const {
+        __ZENOH_RESULT_CHECK(::zp_batch_start(interop::as_loaned_c_ptr(*this)), err, "Failed to start batching");
+        if (err == nullptr || *err == Z_OK) {
+            return BatchGuard(*this);
+        } else {
+            return BatchGuard();
+        }
+    }
+
 #endif
 };
 

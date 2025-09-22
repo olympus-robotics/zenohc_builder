@@ -13,7 +13,7 @@
 
 #pragma once
 
-#if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_UNSTABLE_API)
+#if (defined(ZENOHCXX_ZENOHC) || Z_FEATURE_ADVANCED_PUBLICATION == 1) && defined(Z_FEATURE_UNSTABLE_API)
 #include <optional>
 
 #include "../../detail/closures_concrete.hxx"
@@ -26,8 +26,10 @@
 #include "../publisher.hxx"
 #include "../sample.hxx"
 #include "../timestamp.hxx"
-#if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_UNSTABLE_API)
+#if defined(ZENOHCXX_ZENOHC) || Z_FEATURE_MATCHING == 1
 #include "../matching.hxx"
+#endif
+#if defined(Z_FEATURE_UNSTABLE_API)
 #include "../source_info.hxx"
 #endif
 
@@ -38,7 +40,6 @@ namespace zenoh::ext {
 ///
 /// In addition to publishing the data,
 /// it also maintains the storage, allowing matching subscribers to retrive missed samples.
-/// @note Zenoh-c only
 class AdvancedPublisher : public Owned<::ze_owned_advanced_publisher_t> {
     AdvancedPublisher(zenoh::detail::null_object_t) : Owned(nullptr){};
     friend struct interop::detail::Converter;
@@ -59,7 +60,7 @@ class AdvancedPublisher : public Owned<::ze_owned_advanced_publisher_t> {
                              "Failed to undeclare Advanced Publisher");
     }
 
-#if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_UNSTABLE_API)
+#if defined(Z_FEATURE_UNSTABLE_API)
     /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
     /// release.
     /// @brief Get the id of the advanced publisher.
@@ -139,9 +140,7 @@ class AdvancedPublisher : public Owned<::ze_owned_advanced_publisher_t> {
                              "Failed to perform delete_resource operation");
     }
 
-#if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_UNSTABLE_API)
-    /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
-    /// release.
+#if defined(ZENOHCXX_ZENOHC) || Z_FEATURE_MATCHING == 1
     /// @brief Construct matching listener, registering a callback for notifying subscribers matching with a given
     /// advanced publisher.
     ///
@@ -151,7 +150,6 @@ class AdvancedPublisher : public Owned<::ze_owned_advanced_publisher_t> {
     /// @param err if not null, the result code will be written to this location, otherwise ZException exception will be
     /// thrown in case of error.
     /// @return a ``MatchingListener`` object.
-    /// @note Zenoh-c only.
     template <class C, class D>
     [[nodiscard]] MatchingListener<void> declare_matching_listener(C&& on_status_change, D&& on_drop,
                                                                    zenoh::ZResult* err = nullptr) const {
@@ -174,8 +172,6 @@ class AdvancedPublisher : public Owned<::ze_owned_advanced_publisher_t> {
         return m;
     }
 
-    /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
-    /// release.
     /// @brief Construct matching listener, delivering notification on publisher status change through a streaming
     /// handler.
     /// @tparam Channel the type of channel used to create stream of data (see ``zenoh::channels::FifoChannel`` or
@@ -184,7 +180,6 @@ class AdvancedPublisher : public Owned<::ze_owned_advanced_publisher_t> {
     /// @param err if not null, the result code will be written to this location, otherwise ZException exception will be
     /// thrown in case of error.
     /// @return a ``MatchingListener`` object.
-    /// @note Zenoh-c only.
     template <class Channel>
     [[nodiscard]] MatchingListener<typename Channel::template HandlerType<MatchingStatus>> declare_matching_listener(
         Channel channel, zenoh::ZResult* err = nullptr) const {
@@ -228,12 +223,9 @@ class AdvancedPublisher : public Owned<::ze_owned_advanced_publisher_t> {
         __ZENOH_RESULT_CHECK(res, err, "Failed to declare background Matching Listener");
     }
 
-    /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
-    /// release.
     /// @brief Gets advanced publisher matching status - i.e. if there are any subscribers matching its key expression.
     /// @param err if not null, the result code will be written to this location, otherwise ZException exception will be
     /// thrown in case of error.
-    /// @note Zenoh-c only.
     MatchingStatus get_matching_status(zenoh::ZResult* err = nullptr) const {
         ::z_matching_status_t m;
         zenoh::ZResult res = ::ze_advanced_publisher_get_matching_status(zenoh::interop::as_loaned_c_ptr(*this), &m);
