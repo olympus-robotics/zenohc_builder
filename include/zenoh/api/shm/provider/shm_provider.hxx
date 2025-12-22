@@ -19,6 +19,7 @@
 #include "../../base.hxx"
 #include "../common/common.hxx"
 #include "chunk.hxx"
+#include "precomputed_layout.hxx"
 #include "shm_provider_backend.hxx"
 #include "types.hxx"
 #include "types_impl.hxx"
@@ -47,7 +48,8 @@ class ShmProviderAsyncInterface {
 };
 
 class ShmProvider : public Owned<::z_owned_shm_provider_t> {
-    friend class AllocLayout;
+    friend class PrecomputedLayout;
+    friend class SharedShmProvider;
 
    protected:
     ShmProvider(zenoh::detail::null_object_t) : Owned(nullptr) {}
@@ -128,6 +130,22 @@ class ShmProvider : public Owned<::z_owned_shm_provider_t> {
                                                               alignment, context, ShmProviderAsyncInterface::result);
     }
 
+    PrecomputedLayout alloc_layout(std::size_t size, ZResult* err = nullptr) const {
+        PrecomputedLayout layout = PrecomputedLayout(zenoh::detail::null_object);
+        __ZENOH_RESULT_CHECK(
+            ::z_shm_provider_alloc_layout(interop::as_owned_c_ptr(layout), interop::as_loaned_c_ptr(*this), size), err,
+            "Failed to create SHM Alloc Layout");
+        return layout;
+    }
+
+    PrecomputedLayout alloc_layout(std::size_t size, AllocAlignment alignment, ZResult* err = nullptr) const {
+        PrecomputedLayout layout = PrecomputedLayout(zenoh::detail::null_object);
+        __ZENOH_RESULT_CHECK(::z_shm_provider_alloc_layout_aligned(interop::as_owned_c_ptr(layout),
+                                                                   interop::as_loaned_c_ptr(*this), size, alignment),
+                             err, "Failed to create SHM Alloc Layout");
+        return layout;
+    }
+
     void defragment() const { ::z_shm_provider_defragment(interop::as_loaned_c_ptr(*this)); }
 
     std::size_t garbage_collect() const { return ::z_shm_provider_garbage_collect(interop::as_loaned_c_ptr(*this)); }
@@ -141,9 +159,39 @@ class ShmProvider : public Owned<::z_owned_shm_provider_t> {
     }
 };
 
+class SharedShmProvider : public Owned<::z_owned_shared_shm_provider_t> {
+    friend class Session;
+
+   protected:
+    SharedShmProvider(zenoh::detail::null_object_t) : Owned(nullptr) {}
+
+   public:
+    /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
+    /// release.
+    /// @brief Move constructor.
+    SharedShmProvider(SharedShmProvider&&) = default;
+    SharedShmProvider& operator=(SharedShmProvider&&) = default;
+
+    /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
+    /// release.
+    /// @brief Copy constructor.
+    /// Makes a shallow copy of the underlying shared SHM provider.
+    SharedShmProvider(const SharedShmProvider& other) : SharedShmProvider(zenoh::detail::null_object) {
+        ::z_shared_shm_provider_clone(&this->_0, interop::as_loaned_c_ptr(other));
+    };
+
+    /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
+    /// release.
+    /// @brief Get access to SHM provider interface.
+    const ShmProvider& shm_provider() const {
+        auto loaned = ::z_shared_shm_provider_loan_as(interop::as_loaned_c_ptr(*this));
+        return interop::as_owned_cpp_ref<ShmProvider>(loaned);
+    }
+};
+
 /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
 class CppShmProvider : public ShmProvider {
-    friend class AllocLayout;
+    friend class PrecomputedLayout;
 
    public:
     using ShmProvider::ShmProvider;
@@ -190,5 +238,21 @@ class CppShmProvider : public ShmProvider {
         ::z_shm_provider_threadsafe_new(&this->_0, context, callbacks);
     }
 };
+
+/// @warning This API has been marked as deprecated, use `ShmProvider::alloc_layout` instead.
+inline PrecomputedLayout::PrecomputedLayout(const ShmProvider& owner_provider, std::size_t size, ZResult* err)
+    : Owned(nullptr) {
+    __ZENOH_RESULT_CHECK(::z_alloc_layout_new(&this->_0, interop::as_loaned_c_ptr(owner_provider), size), err,
+                         "Failed to create SHM Alloc Layout");
+}
+
+/// @warning This API has been marked as deprecated, use `ShmProvider::alloc_layout` instead.
+inline PrecomputedLayout::PrecomputedLayout(const ShmProvider& owner_provider, std::size_t size,
+                                            AllocAlignment alignment, ZResult* err)
+    : Owned(nullptr) {
+    __ZENOH_RESULT_CHECK(
+        ::z_alloc_layout_with_alignment_new(&this->_0, interop::as_loaned_c_ptr(owner_provider), size, alignment), err,
+        "Failed to create SHM Alloc Layout");
+}
 
 }  // end of namespace zenoh
