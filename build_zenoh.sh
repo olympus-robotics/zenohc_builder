@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VERSION=1.5.1
+VERSION=1.7.1
 
 ZENOHC_DIR=zenoh-c-${VERSION}
 ZENOHC_BUILD_DIR=${ZENOHC_DIR}-build
