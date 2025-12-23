@@ -18,6 +18,26 @@
 #endif
 /**
  * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
+ * @brief Status of SHM buffer allocation operation.
+ */
+#if (defined(Z_FEATURE_SHARED_MEMORY) && defined(Z_FEATURE_UNSTABLE_API))
+typedef enum zc_buf_alloc_status_t {
+#if (defined(Z_FEATURE_SHARED_MEMORY) && defined(Z_FEATURE_UNSTABLE_API))
+  /**
+   * Allocation ok
+   */
+  ZC_BUF_ALLOC_STATUS_OK = 0,
+#endif
+#if (defined(Z_FEATURE_SHARED_MEMORY) && defined(Z_FEATURE_UNSTABLE_API))
+  /**
+   * Allocation error
+   */
+  ZC_BUF_ALLOC_STATUS_ALLOC_ERROR = 1,
+#endif
+} zc_buf_alloc_status_t;
+#endif
+/**
+ * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
  * @brief Allocation errors
  */
 #if (defined(Z_FEATURE_SHARED_MEMORY) && defined(Z_FEATURE_UNSTABLE_API))
@@ -41,46 +61,6 @@ typedef enum z_alloc_error_t {
   Z_ALLOC_ERROR_OTHER,
 #endif
 } z_alloc_error_t;
-#endif
-/**
- * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
- * @brief Layouting errors
- */
-#if (defined(Z_FEATURE_SHARED_MEMORY) && defined(Z_FEATURE_UNSTABLE_API))
-typedef enum z_layout_error_t {
-#if (defined(Z_FEATURE_SHARED_MEMORY) && defined(Z_FEATURE_UNSTABLE_API))
-  /**
-   * Layout arguments are incorrect.
-   */
-  Z_LAYOUT_ERROR_INCORRECT_LAYOUT_ARGS,
-#endif
-#if (defined(Z_FEATURE_SHARED_MEMORY) && defined(Z_FEATURE_UNSTABLE_API))
-  /**
-   * Layout incompatible with provider.
-   */
-  Z_LAYOUT_ERROR_PROVIDER_INCOMPATIBLE_LAYOUT,
-#endif
-} z_layout_error_t;
-#endif
-/**
- * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
- * @brief Status of SHM buffer allocation operation.
- */
-#if (defined(Z_FEATURE_SHARED_MEMORY) && defined(Z_FEATURE_UNSTABLE_API))
-typedef enum zc_buf_alloc_status_t {
-#if (defined(Z_FEATURE_SHARED_MEMORY) && defined(Z_FEATURE_UNSTABLE_API))
-  /**
-   * Allocation ok
-   */
-  ZC_BUF_ALLOC_STATUS_OK = 0,
-#endif
-#if (defined(Z_FEATURE_SHARED_MEMORY) && defined(Z_FEATURE_UNSTABLE_API))
-  /**
-   * Allocation error
-   */
-  ZC_BUF_ALLOC_STATUS_ALLOC_ERROR = 1,
-#endif
-} zc_buf_alloc_status_t;
 #endif
 /**
  * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
@@ -110,6 +90,26 @@ typedef enum zc_buf_layout_alloc_status_t {
 #endif
 /**
  * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
+ * @brief Layouting errors
+ */
+#if (defined(Z_FEATURE_SHARED_MEMORY) && defined(Z_FEATURE_UNSTABLE_API))
+typedef enum z_layout_error_t {
+#if (defined(Z_FEATURE_SHARED_MEMORY) && defined(Z_FEATURE_UNSTABLE_API))
+  /**
+   * Layout arguments are incorrect.
+   */
+  Z_LAYOUT_ERROR_INCORRECT_LAYOUT_ARGS,
+#endif
+#if (defined(Z_FEATURE_SHARED_MEMORY) && defined(Z_FEATURE_UNSTABLE_API))
+  /**
+   * Layout incompatible with provider.
+   */
+  Z_LAYOUT_ERROR_PROVIDER_INCOMPATIBLE_LAYOUT,
+#endif
+} z_layout_error_t;
+#endif
+/**
+ * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
  * @brief An owned ZShmMut slice.
  */
 typedef struct ALIGN(8) z_owned_shm_mut_t {
@@ -128,18 +128,24 @@ typedef struct z_buf_alloc_result_t {
 #endif
 /**
  * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
- * @brief A loaned ShmProvider's AllocLayout.
+ * @brief A loaned ShmProvider's PrecomputedLayout.
  */
-typedef struct ALIGN(8) z_loaned_alloc_layout_t {
+typedef struct ALIGN(8) z_loaned_precomputed_layout_t {
   uint8_t _0[40];
-} z_loaned_alloc_layout_t;
+} z_loaned_precomputed_layout_t;
+#if (defined(Z_FEATURE_SHARED_MEMORY) && defined(Z_FEATURE_UNSTABLE_API))
+typedef struct z_loaned_precomputed_layout_t z_loaned_alloc_layout_t;
+#endif
 /**
  * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
- * @brief An owned ShmProvider's AllocLayout.
+ * @brief An owned ShmProvider's PrecomputedLayout.
  */
-typedef struct ALIGN(8) z_owned_alloc_layout_t {
+typedef struct ALIGN(8) z_owned_precomputed_layout_t {
   uint8_t _0[40];
-} z_owned_alloc_layout_t;
+} z_owned_precomputed_layout_t;
+#if (defined(Z_FEATURE_SHARED_MEMORY) && defined(Z_FEATURE_UNSTABLE_API))
+typedef struct z_owned_precomputed_layout_t z_owned_alloc_layout_t;
+#endif
 /**
  * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
  * @brief A loaned ShmProvider.
@@ -257,6 +263,20 @@ typedef struct ALIGN(8) z_owned_bytes_writer_t {
 } z_owned_bytes_writer_t;
 /**
  * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
+ * @brief A loaned cancellation token, which can be used to interrupt GET queries.
+ */
+typedef struct ALIGN(8) z_loaned_cancellation_token_t {
+  uint8_t _0[24];
+} z_loaned_cancellation_token_t;
+/**
+ * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
+ * @brief An owned cancellation token, which can be used to interrupt GET queries.
+ */
+typedef struct ALIGN(8) z_owned_cancellation_token_t {
+  uint8_t _0[24];
+} z_owned_cancellation_token_t;
+/**
+ * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
  * @brief An owned ChunkAllocResult.
  */
 typedef struct ALIGN(8) z_owned_chunk_alloc_result_t {
@@ -357,7 +377,7 @@ typedef struct z_loaned_closure_query_t {
  * A loaned reply.
  */
 typedef struct ALIGN(8) z_loaned_reply_t {
-  uint8_t _0[256];
+  uint8_t _0[248];
 } z_loaned_reply_t;
 /**
  * Loaned closure.
@@ -371,7 +391,7 @@ typedef struct z_loaned_closure_reply_t {
  * A loaned Zenoh sample.
  */
 typedef struct ALIGN(8) z_loaned_sample_t {
-  uint8_t _0[232];
+  uint8_t _0[224];
 } z_loaned_sample_t;
 /**
  * Loaned closure.
@@ -421,13 +441,13 @@ typedef struct ALIGN(8) z_loaned_mutex_t {
  * An owned Zenoh configuration.
  */
 typedef struct ALIGN(8) z_owned_config_t {
-  uint8_t _0[1984];
+  uint8_t _0[2008];
 } z_owned_config_t;
 /**
  * A loaned Zenoh configuration.
  */
 typedef struct ALIGN(8) z_loaned_config_t {
-  uint8_t _0[1984];
+  uint8_t _0[2008];
 } z_loaned_config_t;
 /**
  * A loaned key expression.
@@ -564,7 +584,7 @@ typedef struct ALIGN(8) z_loaned_fifo_handler_reply_t {
  * An owned reply from a Queryable to a `z_get()`.
  */
 typedef struct ALIGN(8) z_owned_reply_t {
-  uint8_t _0[256];
+  uint8_t _0[248];
 } z_owned_reply_t;
 /**
  * An loaned Zenoh fifo sample handler.
@@ -579,15 +599,15 @@ typedef struct ALIGN(8) z_loaned_fifo_handler_sample_t {
  * Like all owned types, it should be freed using z_drop or z_sample_drop.
  */
 typedef struct ALIGN(8) z_owned_sample_t {
-  uint8_t _0[232];
+  uint8_t _0[224];
 } z_owned_sample_t;
 /**
  * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
- * @brief An owned Zenoh-allocated source info`.
+ * @brief A source info.
  */
-typedef struct ALIGN(4) z_owned_source_info_t {
-  uint8_t _0[32];
-} z_owned_source_info_t;
+typedef struct ALIGN(4) z_source_info_t {
+  uint8_t _0[24];
+} z_source_info_t;
 /**
  * An owned Zenoh-allocated hello message returned by a Zenoh entity to a scout message sent with `z_scout()`.
  */
@@ -663,6 +683,13 @@ typedef struct ALIGN(8) z_owned_ring_handler_sample_t {
 typedef struct ALIGN(8) z_owned_session_t {
   uint8_t _0[8];
 } z_owned_session_t;
+/**
+ * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
+ * @brief An owned shared ShmProvider.
+ */
+typedef struct ALIGN(8) z_owned_shared_shm_provider_t {
+  uint8_t _0[104];
+} z_owned_shared_shm_provider_t;
 /**
  * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
  * @brief An owned SHM Client.
@@ -763,11 +790,11 @@ typedef struct ALIGN(8) z_loaned_ring_handler_sample_t {
 } z_loaned_ring_handler_sample_t;
 /**
  * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
- * @brief A loaned source info.
+ * @brief A loaned shared ShmProvider.
  */
-typedef struct ALIGN(4) z_loaned_source_info_t {
-  uint8_t _0[32];
-} z_loaned_source_info_t;
+typedef struct ALIGN(8) z_loaned_shared_shm_provider_t {
+  uint8_t _0[104];
+} z_loaned_shared_shm_provider_t;
 /**
  * @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
  * @brief Callbacks for ShmSegment.
@@ -968,7 +995,7 @@ typedef struct ALIGN(8) ze_owned_publication_cache_t {
  * it also will fetch data from a Queryable at startup and peridodically (using  `ze_querying_subscriber_get()`).
  */
 typedef struct ALIGN(8) ze_owned_querying_subscriber_t {
-  uint8_t _0[80];
+  uint8_t _0[88];
 } ze_owned_querying_subscriber_t;
 /**
  * @brief A Zenoh serializer.
@@ -994,7 +1021,7 @@ typedef struct ALIGN(8) ze_loaned_publication_cache_t {
  * @brief A loaned Zenoh querying subscriber.
  */
 typedef struct ALIGN(8) ze_loaned_querying_subscriber_t {
-  uint8_t _0[80];
+  uint8_t _0[88];
 } ze_loaned_querying_subscriber_t;
 /**
  * @brief A loaned Zenoh serializer.

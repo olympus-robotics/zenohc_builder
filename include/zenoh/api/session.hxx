@@ -28,6 +28,9 @@
 #include "publisher.hxx"
 #include "query_consolidation.hxx"
 #include "queryable.hxx"
+#if defined(Z_FEATURE_UNSTABLE_API)
+#include "source_info.hxx"
+#endif
 #include "subscriber.hxx"
 #include "timestamp.hxx"
 #if (defined(ZENOHCXX_ZENOHC) || Z_FEATURE_QUERY == 1)
@@ -35,12 +38,27 @@
 #endif
 #if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_SHARED_MEMORY) && defined(Z_FEATURE_UNSTABLE_API)
 #include "shm/client_storage/client_storage.hxx"
+#include "shm/provider/shm_provider.hxx"
 #endif
+#include "cancellation.hxx"
 
 namespace zenoh {
 namespace ext {
 class SessionExt;
 }
+
+#if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_SHARED_MEMORY) && defined(Z_FEATURE_UNSTABLE_API)
+/// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future release.
+/// @brief The non-ready state for SHM provider.
+enum class ShmProviderNotReadyState {
+    /// Provider is disabled by configuration.
+    SHM_PROVIDER_DISABLED,
+    /// Provider is concurrently-initializing.
+    SHM_PROVIDER_INITIALIZING,
+    /// Error initializing provider.
+    SHM_PROVIDER_ERROR,
+};
+#endif
 
 /// A Zenoh session.
 class Session : public Owned<::z_owned_session_t> {
@@ -50,21 +68,70 @@ class Session : public Owned<::z_owned_session_t> {
     /// @brief Options to be passed when opening a ``Session``.
     struct SessionOptions {
         /// @name Fields
-#ifdef ZENOHCXX_ZENOHPICO
+#if defined(ZENOHCXX_ZENOHPICO) && Z_FEATURE_MULTI_THREAD == 1
+        /// @brief List of background tasks to auto-start, allowing per task granularity.
+        /// @note Zenoh-pico only.
+        struct BackgroundTasksAutoStartOptions {
+            /// @name Fields
+
+            /// Auto-start read task
+            bool auto_start_read_task = true;
+            /// Auto-start lease task
+            bool auto_start_lease_task = true;
+#if defined(Z_FEATURE_UNSTABLE_API) && Z_FEATURE_PERIODIC_TASKS == 1
+            /// Auto-start periodic scheduler task.
+            /// @note With Z_FEATURE_PERIODIC_TASKS enabled only.
+            bool auto_start_periodic_task = true;
+#endif
+            /// @brief Create default auto-start settings.
+            static BackgroundTasksAutoStartOptions create_default() { return {}; }
+        };
+
         /// @brief If ``true``, start background threads which handle the network
         /// traffic. If false, the threads should be called manually with ``Session::start_read_task``,
         /// ``Session::start_lease_task`` and ``Session::start_periodic_scheduler_task``
         /// or methods ``Session::read``, ``Session::send_keep_alive``,
         /// ``Session::send_join`` and ``Session::process_periodic_tasks`` should be called in loop.
-        /// @note Zenoh-pico only.
-        bool start_background_tasks = true;
+        /// If contains ``BackgroundTasksAutoStartOptions`` value, only enabled tasks will start and the
+        /// remaining ones will need to be started or triggered manually.
+        /// @note Zenoh-pico with Z_FEATURE_MULTI_THREAD enabled only.
+        std::variant<bool, BackgroundTasksAutoStartOptions> start_background_tasks = true;
 #endif
+        /// @name Methods
+
+        /// @brief Create default option settings.
         static SessionOptions create_default() { return {}; }
+
+       private:
+        friend struct interop::detail::Converter;
+        ::z_open_options_t to_c_opts() {
+            z_open_options_t opts;
+            z_open_options_default(&opts);
+#if defined(ZENOHCXX_ZENOHPICO) && Z_FEATURE_MULTI_THREAD == 1
+            std::visit(
+                detail::commons::overloaded{[&opts](const SessionOptions::BackgroundTasksAutoStartOptions& tasks) {
+                                                opts.auto_start_read_task = tasks.auto_start_read_task;
+                                                opts.auto_start_lease_task = tasks.auto_start_lease_task;
+#if defined(Z_FEATURE_UNSTABLE_API) && Z_FEATURE_PERIODIC_TASKS == 1
+                                                opts.auto_start_periodic_task = tasks.auto_start_periodic_task;
+#endif
+                                            },
+                                            [&opts](const bool& start_all) {
+                                                opts.auto_start_read_task = start_all;
+                                                opts.auto_start_lease_task = start_all;
+#if defined(Z_FEATURE_UNSTABLE_API) && Z_FEATURE_PERIODIC_TASKS == 1
+                                                opts.auto_start_periodic_task = start_all;
+#endif
+                                            }},
+                start_background_tasks);
+#endif
+            return opts;
+        }
     };
 
     /// @brief Options to be passed when closing a ``Session``.
     struct SessionCloseOptions {
-        /// @name Fields
+        /// @name Methods
         static SessionCloseOptions create_default() { return {}; }
     };
 
@@ -77,28 +144,9 @@ class Session : public Owned<::z_owned_session_t> {
     /// thrown in case of error.
     Session(Config&& config, SessionOptions&& options = SessionOptions::create_default(), ZResult* err = nullptr)
         : Owned(nullptr) {
-        __ZENOH_RESULT_CHECK(::z_open(&this->_0, interop::as_moved_c_ptr(config), nullptr), err,
+        z_open_options_t opts = interop::detail::Converter::to_c_opts(options);
+        __ZENOH_RESULT_CHECK(::z_open(&this->_0, interop::as_moved_c_ptr(config), &opts), err,
                              "Failed to open session");
-#ifdef ZENOHCXX_ZENOHPICO
-        if (err != nullptr && *err != Z_OK) return;
-        if (options.start_background_tasks) {
-            ZResult err_inner;
-            this->start_read_task(&err_inner);
-            if (err_inner == Z_OK) {
-                this->start_lease_task(&err_inner);
-            }
-#if defined(Z_FEATURE_UNSTABLE_API) && Z_FEATURE_PERIODIC_TASKS == 1
-            if (err_inner == Z_OK) {
-                this->start_periodic_scheduler_task(&err_inner);
-            }
-#endif
-            if (err_inner == Z_OK) return;
-            ::z_drop(::z_move(this->_0));
-            __ZENOH_RESULT_CHECK(err_inner, err, "Failed to start background tasks");
-        }
-#else
-        (void)options;
-#endif
     }
 
 #if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_SHARED_MEMORY) && defined(Z_FEATURE_UNSTABLE_API)
@@ -140,6 +188,43 @@ class Session : public Owned<::z_owned_session_t> {
     static Session open(Config&& config, const ShmClientStorage& shm_storage,
                         SessionOptions&& options = SessionOptions::create_default(), ZResult* err = nullptr) {
         return Session(std::move(config), shm_storage, std::move(options), err);
+    }
+#endif
+
+#if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_SHARED_MEMORY) && defined(Z_FEATURE_UNSTABLE_API)
+    /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
+    /// release.
+    /// @brief Each session's runtime may create its own provider to manage internal optimizations.
+    /// This method exposes that provider so it can also be accessed at the application level.
+    ///
+    /// Note that the provider may not be immediately available or may be disabled via configuration.
+    /// Provider initialization is concurrent and triggered by access events (both transport-internal and through this
+    /// API).
+    ///
+    /// To use this provider, both *shared_memory* and *transport_optimization* config sections must be enabled.
+    ///
+    /// @return SharedShmProvider if initialized from Session's provider if it exists and ShmProviderNotReadyState
+    /// with provider state description otherwise.
+    std::variant<SharedShmProvider, ShmProviderNotReadyState> obtain_shm_provider() const {
+        SharedShmProvider provider(zenoh::detail::null_object);
+        ::z_shm_provider_state state;
+
+        ::z_obtain_shm_provider(interop::as_loaned_c_ptr(*this), &provider._0, &state);
+        switch (state) {
+            case Z_SHM_PROVIDER_STATE_DISABLED: {
+                return ShmProviderNotReadyState::SHM_PROVIDER_DISABLED;
+            }
+            case Z_SHM_PROVIDER_STATE_INITIALIZING: {
+                return ShmProviderNotReadyState::SHM_PROVIDER_INITIALIZING;
+            }
+            case Z_SHM_PROVIDER_STATE_READY: {
+                return provider;
+            }
+            case Z_SHM_PROVIDER_STATE_ERROR: {
+                return ShmProviderNotReadyState::SHM_PROVIDER_ERROR;
+            }
+        }
+        return ShmProviderNotReadyState::SHM_PROVIDER_ERROR;
     }
 #endif
 
@@ -190,13 +275,13 @@ class Session : public Owned<::z_owned_session_t> {
         std::optional<Bytes> payload = {};
         /// @brief  An optional encoding of the query payload and/or attachment.
         std::optional<Encoding> encoding = {};
-#if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_UNSTABLE_API)
+#if defined(Z_FEATURE_UNSTABLE_API)
         /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
         /// release.
         /// @brief The source info for the query.
-        /// @note Zenoh-c only.
         std::optional<SourceInfo> source_info = {};
 
+#if defined(ZENOHCXX_ZENOHC)
         /// @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
         /// release.
         ///
@@ -204,17 +289,22 @@ class Session : public Owned<::z_owned_session_t> {
         /// @note Zenoh-c only.
         ReplyKeyExpr accept_replies = ::zc_reply_keyexpr_default();
 #endif
-
-#if defined(ZENOHCXX_ZENOHC)
-        /// @brief Allowed destination.
-        /// @note Zenoh-c only.
-        Locality allowed_destination = ::zc_locality_default();
 #endif
 
+#if defined(ZENOHCXX_ZENOHC) || Z_FEATURE_LOCAL_QUERYABLE == 1
+        /// @brief Allowed destination.
+        Locality allowed_destination = ::z_locality_default();
+#endif
         /// @brief An optional attachment to the query.
         std::optional<Bytes> attachment = {};
         /// @brief The timeout for the query in milliseconds. 0 means default query timeout from zenoh configuration.
         uint64_t timeout_ms = 0;
+#if defined(Z_FEATURE_UNSTABLE_API)
+        /// @brief Cancellation token to interrupt the query.
+        ///  @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
+        ///  release.
+        std::optional<CancellationToken> cancellation_token = {};
+#endif
 
         /// @name Methods
 
@@ -233,17 +323,20 @@ class Session : public Owned<::z_owned_session_t> {
             opts.is_express = this->is_express;
             opts.payload = interop::as_moved_c_ptr(this->payload);
             opts.encoding = interop::as_moved_c_ptr(this->encoding);
-#if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_UNSTABLE_API)
-            opts.source_info = interop::as_moved_c_ptr(this->source_info);
+#if defined(Z_FEATURE_UNSTABLE_API)
+            opts.source_info = interop::as_copyable_c_ptr(this->source_info);
 #endif
 #if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_UNSTABLE_API)
             opts.accept_replies = this->accept_replies;
 #endif
-#if defined(ZENOHCXX_ZENOHC)
+#if defined(ZENOHCXX_ZENOHC) || Z_FEATURE_LOCAL_QUERYABLE == 1
             opts.allowed_destination = this->allowed_destination;
 #endif
             opts.attachment = interop::as_moved_c_ptr(this->attachment);
             opts.timeout_ms = this->timeout_ms;
+#if defined(Z_FEATURE_UNSTABLE_API)
+            opts.cancellation_token = interop::as_moved_c_ptr(this->cancellation_token);
+#endif
             return opts;
         }
     };
@@ -309,11 +402,10 @@ class Session : public Owned<::z_owned_session_t> {
         /// @brief The completeness of the Queryable.
         bool complete = false;
 
-#if defined(ZENOHCXX_ZENOHC)
+#if defined(ZENOHCXX_ZENOHC) || Z_FEATURE_LOCAL_QUERYABLE == 1
         /// Restrict the matching requests that will be received by this Queryable to the ones
         /// that have the compatible allowed_destination.
-        /// @note Zenoh-c only.
-        Locality allowed_origin = ::zc_locality_default();
+        Locality allowed_origin = ::z_locality_default();
 #endif
         /// @name Methods
 
@@ -326,7 +418,7 @@ class Session : public Owned<::z_owned_session_t> {
             ::z_queryable_options_t opts;
             z_queryable_options_default(&opts);
             opts.complete = this->complete;
-#if defined(ZENOHCXX_ZENOHC)
+#if defined(ZENOHCXX_ZENOHC) || Z_FEATURE_LOCAL_QUERYABLE == 1
             opts.allowed_origin = this->allowed_origin;
 #endif
             return opts;
@@ -422,11 +514,10 @@ class Session : public Owned<::z_owned_session_t> {
     /// @brief Options to be passed when declaring a ``Subscriber``.
     struct SubscriberOptions {
         /// @name Fields
-#if defined(ZENOHCXX_ZENOHC)
+#if defined(ZENOHCXX_ZENOHC) || Z_FEATURE_LOCAL_SUBSCRIBER == 1
         /// Restrict the matching publications that will be received by this Subscribers to the ones
         /// that have the compatible allowed_destination.
-        /// @note Zenoh-c only.
-        Locality allowed_origin = ::zc_locality_default();
+        Locality allowed_origin = ::z_locality_default();
 #endif
         /// @name Methods
 
@@ -438,7 +529,7 @@ class Session : public Owned<::z_owned_session_t> {
         ::z_subscriber_options_t to_c_opts() {
             ::z_subscriber_options_t opts;
             z_subscriber_options_default(&opts);
-#if defined(ZENOHCXX_ZENOHC)
+#if defined(ZENOHCXX_ZENOHC) || Z_FEATURE_LOCAL_SUBSCRIBER == 1
             opts.allowed_origin = this->allowed_origin;
 #endif
             return opts;
@@ -589,10 +680,9 @@ class Session : public Owned<::z_owned_session_t> {
         CongestionControl congestion_control = ::z_internal_congestion_control_default_push();
         /// @brief Whether Zenoh will NOT wait to batch this message with others to reduce the bandwith.
         bool is_express = false;
-#if defined(ZENOHCXX_ZENOHC)
+#if defined(ZENOHCXX_ZENOHC) || Z_FEATURE_LOCAL_SUBSCRIBER == 1
         /// @brief Allowed destination.
-        /// @note Zenoh-c only.
-        Locality allowed_destination = ::zc_locality_default();
+        Locality allowed_destination = ::z_locality_default();
 #endif
         /// @brief the timestamp of this message.
         std::optional<Timestamp> timestamp = {};
@@ -635,9 +725,9 @@ class Session : public Owned<::z_owned_session_t> {
         opts.is_express = options.is_express;
 #if defined(Z_FEATURE_UNSTABLE_API)
         opts.reliability = options.reliability;
-        opts.source_info = interop::as_moved_c_ptr(options.source_info);
+        opts.source_info = interop::as_copyable_c_ptr(options.source_info);
 #endif
-#if defined(ZENOHCXX_ZENOHC)
+#if defined(ZENOHCXX_ZENOHC) || Z_FEATURE_LOCAL_SUBSCRIBER == 1
         opts.allowed_destination = options.allowed_destination;
 #endif
         opts.attachment = interop::as_moved_c_ptr(options.attachment);
@@ -663,10 +753,9 @@ class Session : public Owned<::z_owned_session_t> {
         /// @brief The publisher reliability.
         Reliability reliability = z_reliability_default();
 #endif
-#if defined(ZENOHCXX_ZENOHC)
+#if defined(ZENOHCXX_ZENOHC) || Z_FEATURE_LOCAL_SUBSCRIBER == 1
         /// @brief Allowed destination.
-        /// @note Zenoh-c only.
-        Locality allowed_destination = ::zc_locality_default();
+        Locality allowed_destination = ::z_locality_default();
 #endif
         /// @brief Default encoding to use for Publisher::put.
         std::optional<Encoding> encoding = {};
@@ -687,7 +776,7 @@ class Session : public Owned<::z_owned_session_t> {
 #if defined(Z_FEATURE_UNSTABLE_API)
             opts.reliability = this->reliability;
 #endif
-#if defined(ZENOHCXX_ZENOHC)
+#if defined(ZENOHCXX_ZENOHC) || Z_FEATURE_LOCAL_SUBSCRIBER == 1
             opts.allowed_destination = this->allowed_destination;
 #endif
             opts.encoding = interop::as_moved_c_ptr(this->encoding);
@@ -736,10 +825,9 @@ class Session : public Owned<::z_owned_session_t> {
         /// @note Zenoh-c only.
         ReplyKeyExpr accept_replies = ::zc_reply_keyexpr_default();
 #endif
-#if defined(ZENOHCXX_ZENOHC)
+#if defined(ZENOHCXX_ZENOHC) || Z_FEATURE_LOCAL_QUERYABLE == 1
         /// @brief Allowed destination for querier queries.
-        /// @note Zenoh-c only.
-        Locality allowed_destination = ::zc_locality_default();
+        Locality allowed_destination = ::z_locality_default();
 #endif
 
         /// @brief The timeout for the querier queries in milliseconds. 0 means default query timeout from zenoh
@@ -771,7 +859,7 @@ class Session : public Owned<::z_owned_session_t> {
 #if defined(ZENOHCXX_ZENOHC) && defined(Z_FEATURE_UNSTABLE_API)
         opts.accept_replies = options.accept_replies;
 #endif
-#if defined(ZENOHCXX_ZENOHC)
+#if defined(ZENOHCXX_ZENOHC) || Z_FEATURE_LOCAL_QUERYABLE == 1
         opts.allowed_destination = options.allowed_destination;
 #endif
         opts.timeout_ms = options.timeout_ms;
@@ -817,11 +905,12 @@ class Session : public Owned<::z_owned_session_t> {
                              "Failed to fetch peer Ids");
         return out;
     }
-#ifdef ZENOHCXX_ZENOHPICO
+#if defined(ZENOHCXX_ZENOHPICO)
+#if Z_FEATURE_MULTI_THREAD == 1
     /// @brief Start a separate task to read from the network and process the messages as soon as they are received.
     /// @param err if not null, the result code will be written to this location, otherwise ZException exception will be
     /// thrown in case of error.
-    /// @note Zenoh-pico only.
+    /// @note Zenoh-pico with Z_FEATURE_MULTI_THREAD enabled only.
     void start_read_task(ZResult* err = nullptr) {
         __ZENOH_RESULT_CHECK(zp_start_read_task(interop::as_loaned_c_ptr(*this), nullptr), err,
                              "Failed to start read task");
@@ -830,7 +919,7 @@ class Session : public Owned<::z_owned_session_t> {
     /// @brief Stop the read task.
     /// @param err if not null, the result code will be written to this location, otherwise ZException exception will be
     /// thrown in case of error.
-    /// @note Zenoh-pico only.
+    /// @note Zenoh-pico with Z_FEATURE_MULTI_THREAD enabled only.
     void stop_read_task(ZResult* err = nullptr) {
         __ZENOH_RESULT_CHECK(zp_stop_read_task(interop::as_loaned_c_ptr(*this)), err, "Failed to stop read task");
     }
@@ -840,7 +929,7 @@ class Session : public Owned<::z_owned_session_t> {
     /// periodically sends the Join messages.
     /// @param err if not null, the result code will be written to this location, otherwise ZException exception will be
     /// thrown in case of error.
-    /// @note Zenoh-pico only.
+    /// @note Zenoh-pico with Z_FEATURE_MULTI_THREAD enabled only.
     void start_lease_task(ZResult* err = nullptr) {
         __ZENOH_RESULT_CHECK(zp_start_lease_task(interop::as_loaned_c_ptr(*this), NULL), err,
                              "Failed to start lease task");
@@ -849,17 +938,27 @@ class Session : public Owned<::z_owned_session_t> {
     /// @brief Stop the lease task.
     /// @param err if not null, the result code will be written to this location, otherwise ZException exception will be
     /// thrown in case of error.
-    /// @note Zenoh-pico only.
+    /// @note Zenoh-pico with Z_FEATURE_MULTI_THREAD enabled only.
     void stop_lease_task(ZResult* err = nullptr) {
         __ZENOH_RESULT_CHECK(zp_stop_lease_task(interop::as_loaned_c_ptr(*this)), err, "Failed to stop lease task");
     }
+
+    /// @brief Verify if read task is currently running.
+    /// @return ``true`` if read task is running, ``false`` otherwise.
+    /// @note Zenoh-pico with Z_FEATURE_MULTI_THREAD enabled only.
+    bool is_read_task_running() const { return zp_read_task_is_running(interop::as_loaned_c_ptr(*this)); }
+
+    /// @brief Verify if lease task is currently running.
+    /// @return ``true`` if read task is running, ``false`` otherwise.
+    /// @note Zenoh-pico with Z_FEATURE_MULTI_THREAD enabled only.
+    bool is_lease_task_running() const { return zp_lease_task_is_running(interop::as_loaned_c_ptr(*this)); }
 
 #if defined(Z_FEATURE_UNSTABLE_API) && Z_FEATURE_PERIODIC_TASKS == 1
     /// @brief Start the periodic scheduler task.  The periodic scheduler task executes registered periodic jobs
     /// according to their configured intervals. Jobs are added and removed via the scheduler API.
     /// @param err if not null, the result code will be written to this location, otherwise ZException exception will be
     /// thrown in case of error.
-    /// @note Zenoh-pico only.
+    /// @note Zenoh-pico with Z_FEATURE_MULTI_THREAD and Z_FEATURE_PERIODIC_TASKS enabled only.
     void start_periodic_scheduler_task(ZResult* err = nullptr) {
         __ZENOH_RESULT_CHECK(zp_start_periodic_scheduler_task(interop::as_loaned_c_ptr(*this), NULL), err,
                              "Failed to start periodic scheduler task");
@@ -868,15 +967,26 @@ class Session : public Owned<::z_owned_session_t> {
     /// @brief Stop the periodic scheduler task.
     /// @param err if not null, the result code will be written to this location, otherwise ZException exception will be
     /// thrown in case of error.
-    /// @note Zenoh-pico only.
+    /// @note Zenoh-pico with Z_FEATURE_MULTI_THREAD and Z_FEATURE_PERIODIC_TASKS enabled  only.
     void stop_periodic_scheduler_task(ZResult* err = nullptr) {
         __ZENOH_RESULT_CHECK(zp_stop_periodic_scheduler_task(interop::as_loaned_c_ptr(*this)), err,
                              "Failed to stop periodic scheduler task");
     }
 
+    /// @brief Verify if periodic scheduler task is currently running.
+    /// @return ``true`` if read task is running, ``false`` otherwise.
+    /// @note Zenoh-pico with _FEATURE_MULTI_THREAD and Z_FEATURE_PERIODIC_TASKS enabled only.
+    bool is_periodic_scheduler_task_running() const {
+        return zp_periodic_scheduler_task_is_running(interop::as_loaned_c_ptr(*this));
+    }
+#endif
+#endif
+
+#if defined(Z_FEATURE_UNSTABLE_API) && Z_FEATURE_PERIODIC_TASKS == 1
     /// @brief Process outstanding periodic tasks.
     /// @param err if not null, the result code will be written to this location, otherwise ZException exception will be
     /// thrown in case of error.
+    /// @note Zenoh-pico with Z_FEATURE_PERIODIC_TASKS enabled  only.
     void process_periodic_tasks(ZResult* err = nullptr) {
         __ZENOH_RESULT_CHECK(zp_process_periodic_tasks(interop::as_loaned_c_ptr(*this)), err,
                              "Failed to process periodic tasks");
@@ -1065,11 +1175,29 @@ class Session : public Owned<::z_owned_session_t> {
 
         /// @brief The timeout for the query in milliseconds.
         uint64_t timeout_ms = 10000;
+#if defined(Z_FEATURE_UNSTABLE_API)
+        /// @brief Cancellation token to interrupt the query.
+        ///  @warning This API has been marked as unstable: it works as advertised, but it may be changed in a future
+        ///  release.
+        std::optional<CancellationToken> cancellation_token = {};
+#endif
 
         /// @name Methods
 
         /// @brief Create default option settings.
         static LivelinessGetOptions create_default() { return {}; }
+
+       private:
+        friend struct interop::detail::Converter;
+        ::z_liveliness_get_options_t to_c_opts() {
+            ::z_liveliness_get_options_t opts;
+            z_liveliness_get_options_default(&opts);
+            opts.timeout_ms = this->timeout_ms;
+#if defined(Z_FEATURE_UNSTABLE_API)
+            opts.cancellation_token = interop::as_moved_c_ptr(this->cancellation_token);
+#endif
+            return opts;
+        }
     };
 
     /// @brief Query liveliness tokens currently on the network with a key expression intersecting with `key_expr`.
@@ -1094,9 +1222,7 @@ class Session : public Owned<::z_owned_session_t> {
         using ClosureType = typename detail::closures::Closure<Cval, Dval, void, Reply&>;
         auto closure = ClosureType::into_context(std::forward<C>(on_reply), std::forward<D>(on_drop));
         ::z_closure(&c_closure, detail::closures::_zenoh_on_reply_call, detail::closures::_zenoh_on_drop, closure);
-        ::z_liveliness_get_options_t opts;
-        z_liveliness_get_options_default(&opts);
-        opts.timeout_ms = options.timeout_ms;
+        ::z_liveliness_get_options_t opts = interop::detail::Converter::to_c_opts(options);
 
         __ZENOH_RESULT_CHECK(::z_liveliness_get(interop::as_loaned_c_ptr(*this), interop::as_loaned_c_ptr(key_expr),
                                                 ::z_move(c_closure), &opts),
@@ -1117,9 +1243,7 @@ class Session : public Owned<::z_owned_session_t> {
         const KeyExpr& key_expr, Channel channel,
         LivelinessGetOptions&& options = LivelinessGetOptions::create_default(), ZResult* err = nullptr) const {
         auto cb_handler_pair = channel.template into_cb_handler_pair<Reply>();
-        ::z_liveliness_get_options_t opts;
-        z_liveliness_get_options_default(&opts);
-        opts.timeout_ms = options.timeout_ms;
+        ::z_liveliness_get_options_t opts = interop::detail::Converter::to_c_opts(options);
 
         ZResult res = ::z_liveliness_get(interop::as_loaned_c_ptr(*this), interop::as_loaned_c_ptr(key_expr),
                                          ::z_move(cb_handler_pair.first), &opts);
@@ -1138,6 +1262,12 @@ class Session : public Owned<::z_owned_session_t> {
         return interop::into_copyable_cpp_obj<Timestamp>(t);
     }
 
+#if defined(Z_FEATURE_UNSTABLE_API)
+    /// @brief Get session global ID.
+    EntityGlobalId get_id() {
+        return interop::into_copyable_cpp_obj<EntityGlobalId>(::z_session_id(interop::as_loaned_c_ptr(*this)));
+    }
+#endif
     /// @brief Close the session and undeclare all not yet undeclared ``Subscriber`` and ``Queryable``
     /// callbacks. After this, all calls to corresponding session (or session entity) methods will fail.
     /// It still possible though to process any already received messages using ``Subscriber`` or
