@@ -65,7 +65,7 @@ if(NOT TARGET __zenohc_static)
 endif()
 
 if(NOT TARGET zenohc::lib)
-    if(TRUE)
+    if(FALSE)
         add_library(zenohc::lib ALIAS __zenohc_shared)
     else()
         add_library(zenohc::lib ALIAS __zenohc_static)
